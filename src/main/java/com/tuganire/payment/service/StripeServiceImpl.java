@@ -1,5 +1,9 @@
 package com.tuganire.payment.service;
 
+import com.stripe.model.Customer;
+import com.stripe.model.checkout.Session;
+import com.stripe.param.CustomerCreateParams;
+import com.stripe.param.checkout.SessionCreateParams;
 import com.tuganire.auth.model.User;
 import com.tuganire.auth.repository.UserRepository;
 import com.tuganire.payment.constant.SubscriptionPlan;
@@ -9,10 +13,6 @@ import com.tuganire.payment.model.Subscription;
 import com.tuganire.payment.repository.SubscriptionRepository;
 import com.tuganire.shared.constant.PlanType;
 import com.tuganire.shared.service.EmailService;
-import com.stripe.model.Customer;
-import com.stripe.model.checkout.Session;
-import com.stripe.param.CustomerCreateParams;
-import com.stripe.param.checkout.SessionCreateParams;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
