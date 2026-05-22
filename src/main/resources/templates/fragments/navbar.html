@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<body>
+<header th:fragment="navbar"
+        class="sticky top-0 z-30 w-full border-b border-base-200 bg-base-100/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+
+        <!-- Brand -->
+        <a th:href="@{/}" class="flex items-center gap-2 group">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-content font-semibold">S</span>
+            <span class="font-semibold text-base-content tracking-tight">Tuganire</span>
+        </a>
+
+        <!-- Desktop nav (anonymous) -->
+        <nav sec:authorize="isAnonymous()" class="hidden md:flex items-center gap-1">
+            <a href="#features"
+               class="px-3 py-2 text-sm font-medium text-base-content/70 hover:text-base-content rounded-lg hover:bg-base-200 transition-colors"
+               th:text="#{nav.features}">Features</a>
+            <a th:href="@{/payment/pricing}"
+               class="px-3 py-2 text-sm font-medium text-base-content/70 hover:text-base-content rounded-lg hover:bg-base-200 transition-colors"
+               th:text="#{nav.pricing}">Pricing</a>
+            <a th:href="@{/blog}"
+               class="px-3 py-2 text-sm font-medium text-base-content/70 hover:text-base-content rounded-lg hover:bg-base-200 transition-colors"
+               th:text="#{nav.blog}">Blog</a>
+        </nav>
+
+        <!-- Desktop nav (authenticated) -->
+        <nav sec:authorize="isAuthenticated()" class="hidden md:flex items-center gap-1">
+            <a th:href="@{/dashboard}"
+               class="px-3 py-2 text-sm font-medium text-base-content/70 hover:text-base-content rounded-lg hover:bg-base-200 transition-colors"
+               th:text="#{nav.dashboard}">Dashboard</a>
+            <a th:href="@{/blog}"
+               class="px-3 py-2 text-sm font-medium text-base-content/70 hover:text-base-content rounded-lg hover:bg-base-200 transition-colors"
+               th:text="#{nav.blog}">Blog</a>
+            <a sec:authorize="hasAuthority('ROLE_ADMIN')"
+               th:href="@{/admin}"
+               class="px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 rounded-lg transition-colors inline-flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <span th:text="#{nav.admin}">Admin</span>
+            </a>
+        </nav>
+
+        <!-- Right side: CTAs / avatar -->
+        <div class="flex items-center gap-2">
+            <!-- Anonymous CTAs (desktop) -->
+            <div sec:authorize="isAnonymous()" class="hidden md:flex items-center gap-2">
+                <a th:href="@{/login}"
+                   class="px-4 py-2 text-sm font-medium text-base-content/80 hover:text-base-content transition-colors"
+                   th:text="#{nav.login}">Login</a>
+                <a th:href="@{/register}"
+                   class="btn btn-primary btn-sm rounded-lg hover:-translate-y-px hover:shadow-md active:translate-y-0 transition-all duration-200"
+                   th:text="#{nav.register}">Sign up</a>
+            </div>
+
+            <!-- Authenticated avatar dropdown (all-in-one on mobile) -->
+            <div sec:authorize="isAuthenticated()" class="dropdown dropdown-end">
+                <button tabindex="0" class="btn btn-ghost btn-circle min-h-11 min-w-11 ring-1 ring-base-200 hover:ring-base-300 transition"
+                        aria-label="User menu" aria-haspopup="true">
+                    <div class="w-9 h-9 rounded-full bg-primary text-primary-content flex items-center justify-center font-semibold text-sm">
+                        <span sec:authentication="principal.firstName"
+                              th:text="${#authentication.principal.firstName != null and #strings.length(#authentication.principal.firstName) > 0 ? #strings.substring(#authentication.principal.firstName, 0, 1).toUpperCase() : 'U'}">U</span>
+                    </div>
+                </button>
+                <ul tabindex="0" class="dropdown-content menu menu-sm mt-3 p-2 shadow-lg bg-base-100 border border-base-200 rounded-xl w-60 z-[40]">
+                    <li class="px-3 py-2 text-xs uppercase tracking-wider text-base-content/50 font-medium pointer-events-none truncate">
+                        <span sec:authentication="principal.email"></span>
+                    </li>
+
+                    <!-- Mobile-only primary nav (mirrors desktop horizontal nav) -->
+                    <li class="md:hidden"><a th:href="@{/dashboard}" th:text="#{nav.dashboard}">Dashboard</a></li>
+                    <li class="md:hidden"><a th:href="@{/blog}" th:text="#{nav.blog}">Blog</a></li>
+                    <li sec:authorize="hasAuthority('ROLE_ADMIN')" class="md:hidden">
+                        <a th:href="@{/admin}" class="text-primary font-medium" th:text="#{nav.admin}">Admin</a>
+                    </li>
+                    <li class="md:hidden"><div class="divider my-1"></div></li>
+
+                    <!-- Always-visible account items -->
+                    <li><a th:href="@{/profile}" th:text="#{nav.profile}">Profile</a></li>
+                    <li><a th:href="@{/profile(tab='subscription')}" th:text="#{nav.subscription}">Subscription</a></li>
+                    <li><div class="divider my-1"></div></li>
+                    <li>
+                        <form th:action="@{/logout}" method="post" class="w-full">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <button type="submit" class="w-full text-left flex items-center gap-2 text-error">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/>
+                                </svg>
+                                <span th:text="#{nav.logout}">Sign out</span>
+                            </button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Mobile hamburger (anonymous only — authenticated users get the avatar dropdown) -->
+            <div sec:authorize="isAnonymous()" class="dropdown dropdown-end md:hidden">
+                <button tabindex="0" class="btn btn-ghost btn-circle min-h-11 min-w-11 ring-1 ring-base-200 hover:ring-base-300 transition"
+                        aria-label="Open menu" aria-haspopup="true">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+                    </svg>
+                </button>
+                <ul tabindex="0" class="dropdown-content menu menu-sm mt-3 p-2 shadow-lg bg-base-100 border border-base-200 rounded-xl w-56 z-[40]">
+                    <li><a href="#features" th:text="#{nav.features}">Features</a></li>
+                    <li><a th:href="@{/payment/pricing}" th:text="#{nav.pricing}">Pricing</a></li>
+                    <li><a th:href="@{/blog}" th:text="#{nav.blog}">Blog</a></li>
+                    <li><div class="divider my-1"></div></li>
+                    <li><a th:href="@{/login}" th:text="#{nav.login}">Login</a></li>
+                    <li>
+                        <a th:href="@{/register}" class="bg-primary text-primary-content hover:bg-primary/90" th:text="#{nav.register}">Sign up</a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Anonymous mobile login link is now inside hamburger; remove duplicate CTAs on mobile by hiding above-block on small screens already (already md:hidden via parent) -->
+        </div>
+    </div>
+</header>
+</body>
+</html>

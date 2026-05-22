@@ -1,0 +1,54 @@
+spring:
+  main:
+    banner-mode: off
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  mail:
+    host: localhost
+    port: 25
+    username: ""
+    password: ""
+
+  cloud:
+    aws:
+      s3:
+        enabled: false
+      region:
+        static: eu-west-1
+      credentials:
+        access-key: test
+        secret-key: test
+
+  ai:
+    openai:
+      api-key: test-key
+
+stripe:
+  api-key: sk_test_placeholder
+  webhook-secret: whsec_test_placeholder
+  price-id-monthly: price_test_monthly
+  price-id-yearly: price_test_yearly
+
+tuganire:
+  base-url: http://localhost:8080
+
+app:
+  mail:
+    from: noreply@test.local
+  storage:
+    s3:
+      enabled: false
+
+sentry:
+  dsn: ""

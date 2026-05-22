@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{home.title}">Tuganire</title>
+</head>
+<body>
+    <div layout:fragment="content">
+        <!-- Hero -->
+        <section class="relative overflow-hidden">
+            <div class="absolute inset-0 -z-10 bg-gradient-to-b from-primary/5 via-base-100 to-base-100"></div>
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-32">
+                <div class="text-center max-w-3xl mx-auto">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-xs font-medium mb-6">
+                        <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                        <span th:text="#{home.hero.badge}">Production-ready SaaS template</span>
+                    </div>
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-base-content"
+                        th:text="#{home.hero.title}">Ship your SaaS faster</h1>
+                    <p class="mt-6 text-lg sm:text-xl text-base-content/70 leading-relaxed"
+                       th:text="#{home.hero.subtitle}">
+                        A complete Spring Boot + Thymeleaf starter with authentication, billing, and admin tools built in.
+                    </p>
+                    <div class="mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+                        <div sec:authorize="isAuthenticated()" class="contents">
+                            <a th:href="@{/dashboard}"
+                               class="btn btn-primary btn-lg rounded-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all">
+                                <span th:text="#{nav.dashboard}">Dashboard</span>
+                            </a>
+                        </div>
+                        <div sec:authorize="!isAuthenticated()" class="contents">
+                            <a th:href="@{/register}"
+                               class="btn btn-primary btn-lg rounded-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                               th:text="#{home.hero.cta}">Get started free</a>
+                            <a th:href="@{/login}"
+                               class="btn btn-ghost btn-lg rounded-lg"
+                               th:text="#{home.hero.login}">Sign in</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features" class="py-16 sm:py-20 lg:py-24 bg-base-200/30">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-2xl mx-auto text-center mb-12 sm:mb-16">
+                    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-base-content"
+                        th:text="#{home.features.title}">Everything you need to launch</h2>
+                    <p class="mt-4 text-base sm:text-lg text-base-content/70"
+                       th:text="#{home.features.subtitle}">Stop reinventing the wheel. Start shipping features.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+                    <!-- Feature 1 -->
+                    <div class="group bg-base-100 border border-base-200 rounded-xl p-6 sm:p-8 hover:border-primary/30 hover:shadow-md transition-all">
+                        <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-5 group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-base-content mb-2"
+                            th:text="#{home.feature1.title}">Authentication</h3>
+                        <p class="text-sm text-base-content/70 leading-relaxed"
+                           th:text="#{home.feature1.description}">Email, OAuth, password reset, email verification — all wired up.</p>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="group bg-base-100 border border-base-200 rounded-xl p-6 sm:p-8 hover:border-primary/30 hover:shadow-md transition-all">
+                        <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-5 group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-base-content mb-2"
+                            th:text="#{home.feature2.title}">Billing</h3>
+                        <p class="text-sm text-base-content/70 leading-relaxed"
+                           th:text="#{home.feature2.description}">Subscriptions, plan upgrades, customer portal — production billing ready out of the box.</p>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="group bg-base-100 border border-base-200 rounded-xl p-6 sm:p-8 hover:border-primary/30 hover:shadow-md transition-all">
+                        <div class="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-5 group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-base-content mb-2"
+                            th:text="#{home.feature3.title}">AI built-in</h3>
+                        <p class="text-sm text-base-content/70 leading-relaxed"
+                           th:text="#{home.feature3.description}">Spring AI with multi-provider support and built-in cost tracking.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</body>
+</html>

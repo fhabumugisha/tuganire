@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+spring:
+  thymeleaf:
+    cache: false
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/tuganire?user=postgres&password=postgres
+
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.tuganire: DEBUG
+    org.springframework.security: DEBUG

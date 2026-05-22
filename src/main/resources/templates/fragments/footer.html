@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<footer th:fragment="footer" class="mt-24 border-t border-base-200" role="contentinfo">
+    <div class="container mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between text-sm text-base-content/60">
+        <p>&copy; <span th:text="${#temporals.format(#temporals.createNow(), 'yyyy')}">2026</span> Tuganire</p>
+        <nav class="flex gap-4 mt-4 md:mt-0">
+            <a th:href="@{/privacy}" th:text="#{footer.privacy}">Privacy</a>
+            <a th:href="@{/terms}" th:text="#{footer.terms}">Terms</a>
+            <a th:href="@{/legal}" th:text="#{footer.legal}">Legal</a>
+        </nav>
+    </div>
+</footer>
+</body>
+</html>

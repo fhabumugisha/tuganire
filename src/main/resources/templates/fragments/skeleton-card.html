@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+    Card skeleton placeholder (KPI / generic card).
+    Usage: <div th:replace="~{fragments/skeleton-card :: skeleton-card}"></div>
+-->
+<div th:fragment="skeleton-card"
+     class="bg-base-100 border border-base-200 rounded-xl p-6">
+    <div class="h-3 w-24 bg-base-200 rounded animate-pulse"></div>
+    <div class="mt-3 h-9 w-32 bg-base-200 rounded animate-pulse"></div>
+    <div class="mt-4 h-3 w-20 bg-base-200 rounded animate-pulse"></div>
+</div>
+</body>
+</html>

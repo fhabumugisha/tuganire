@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!--
+        SpotBugs exclusion filter for Parchemins project.
+        Excludes false positives from Lombok, Spring, JPA, and common patterns.
+    -->
+
+    <!-- ==================== Lombok ==================== -->
+
+    <!-- Lombok-generated code: @Data, @Builder, @Getter, @Setter -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- Lombok @Builder generates methods SpotBugs flags -->
+    <Match>
+        <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+        <Class name="~.*\$.*Builder"/>
+    </Match>
+
+    <!-- ==================== JPA / Spring ==================== -->
+
+    <!-- JPA entities: serialization warnings -->
+    <Match>
+        <Bug pattern="SE_BAD_FIELD,SE_NO_SERIALVERSIONID,SE_TRANSIENT_FIELD_NOT_RESTORED"/>
+        <Package name="~com\.parchemins\..*\.model"/>
+    </Match>
+
+    <!-- Spring DI fields appear "unused" to static analysis -->
+    <Match>
+        <Bug pattern="URF_UNREAD_FIELD,UWF_UNWRITTEN_FIELD,UWF_NULL_FIELD"/>
+    </Match>
+
+    <!-- Spring @Configuration and @Bean methods -->
+    <Match>
+        <Bug pattern="MS_SHOULD_BE_FINAL"/>
+        <Package name="~com\.parchemins\.shared\.config"/>
+    </Match>
+
+    <!-- Spring singleton beans writing to static fields (e.g. Stripe.apiKey) -->
+    <Match>
+        <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD"/>
+    </Match>
+
+    <!-- Constructor throw in Spring-managed beans -->
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    </Match>
+
+    <!-- ==================== Security false positives ==================== -->
+
+    <!--
+        CRLF_INJECTION_LOGS: Find Security Bugs flags all log statements with
+        user-derived data. Spring Security already sanitizes inputs, and SLF4J
+        parameterized logging prevents injection. Suppressing globally.
+    -->
+    <Match>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+
+    <!-- ==================== Code style / low-value warnings ==================== -->
+
+    <!-- VA_FORMAT_STRING_USES_NEWLINE: Using \n in text blocks and String.format
+         is idiomatic Java 21+. %n is only needed for platform-dependent output. -->
+    <Match>
+        <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    </Match>
+
+    <!-- Redundant null checks on values guaranteed non-null by Spring/JPA -->
+    <Match>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+    </Match>
+
+    <!-- Autoboxing in ternary operators — minor performance, not bugs -->
+    <Match>
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED,BX_UNBOXED_AND_COERCED_FOR_TERNARY_OPERATOR"/>
+    </Match>
+
+    <!-- Dead local store — often intentional for readability or debugging -->
+    <Match>
+        <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
+    </Match>
+
+    <!-- ==================== Test code ==================== -->
+
+    <Match>
+        <Source name="~.*Test\.java"/>
+    </Match>
+    <Match>
+        <Source name="~.*IT\.java"/>
+    </Match>
+</FindBugsFilter>

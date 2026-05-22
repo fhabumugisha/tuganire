@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+    <title layout:title-pattern="$CONTENT_TITLE - Admin">Admin</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <script th:src="@{/webjars/htmx.org/dist/htmx.min.js}"></script>
+    <script th:src="@{/webjars/alpinejs/dist/cdn.min.js}" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts" defer></script>
+    <th:block layout:fragment="head-extra"></th:block>
+</head>
+<body class="min-h-screen bg-base-200">
+
+<!-- DaisyUI drawer wrapper for mobile sidebar -->
+<div class="drawer lg:drawer-open min-h-screen">
+    <input id="admin-drawer" type="checkbox" class="drawer-toggle">
+
+    <!-- Page content -->
+    <div class="drawer-content flex flex-col min-h-screen">
+
+        <!-- Top bar -->
+        <div th:replace="~{fragments/admin/admin-topbar :: topbar}"></div>
+
+        <!-- Main content area -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8">
+            <div layout:fragment="content"></div>
+        </main>
+
+    </div>
+
+    <!-- Sidebar drawer -->
+    <div class="drawer-side z-40">
+        <label for="admin-drawer" class="drawer-overlay"></label>
+        <div th:replace="~{fragments/admin/admin-sidebar :: sidebar}"></div>
+    </div>
+</div>
+
+</body>
+</html>

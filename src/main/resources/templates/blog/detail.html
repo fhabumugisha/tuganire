@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="${article.title}">Article</title>
+    <meta name="description" th:if="${article.excerpt != null}" th:content="${article.excerpt}"/>
+</head>
+<body>
+<div layout:fragment="content">
+
+    <article class="max-w-2xl mx-auto px-4 py-12 lg:py-16">
+
+        <!-- Breadcrumb -->
+        <nav aria-label="Fil d'Ariane" class="flex items-center gap-2 text-sm text-base-content/60 mb-8">
+            <a th:href="@{/}" class="hover:text-primary transition-colors" th:text="#{nav.home}">Accueil</a>
+            <span>›</span>
+            <a th:href="@{/blog}" class="hover:text-primary transition-colors" th:text="#{blog.title}">Blog</a>
+            <span>›</span>
+            <span class="text-base-content/90 line-clamp-1" th:text="${article.title}"></span>
+        </nav>
+
+        <!-- Title -->
+        <h1 class="mt-6 text-4xl lg:text-5xl font-semibold tracking-tight leading-[1.1] text-base-content"
+            th:text="${article.title}"></h1>
+
+        <!-- Byline -->
+        <div class="mt-6 flex flex-wrap items-center gap-3 text-sm text-base-content/60">
+            <span th:if="${article.author != null}"
+                  th:text="${article.author.firstName + ' ' + article.author.lastName}"></span>
+            <span th:if="${article.author != null and article.publishedAt != null}">·</span>
+            <time th:if="${article.publishedAt != null}"
+                  th:datetime="${article.publishedAt}"
+                  th:text="${#temporals.format(article.publishedAt, 'd MMMM yyyy')}"></time>
+            <span>·</span>
+            <span th:text="${article.readingTimeMinutes + ' min de lecture'}"></span>
+        </div>
+
+        <!-- Cover Image -->
+        <img th:if="${article.coverImageUrl != null and !#strings.isEmpty(article.coverImageUrl)}"
+             th:src="${article.coverImageUrl}"
+             th:alt="${article.title}"
+             class="aspect-[16/9] rounded-2xl object-cover w-full my-10"/>
+
+        <!-- Content -->
+        <div class="article-prose" th:utext="${articleHtml}"></div>
+
+        <!-- Back link -->
+        <div class="mt-16 pt-8 border-t border-base-200">
+            <a th:href="@{/blog}"
+               class="inline-flex items-center gap-2 text-sm text-base-content/60 hover:text-primary transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span th:text="#{blog.back.to.list}">Retour aux articles</span>
+            </a>
+        </div>
+
+    </article>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{payment.success.title}">Paiement reussi</title>
+</head>
+<body>
+    <div layout:fragment="content">
+        <div class="min-h-[70vh] flex items-center justify-center px-4">
+            <div class="max-w-md w-full text-center">
+                <div class="mb-8">
+                    <div class="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                </div>
+
+                <h1 class="text-2xl font-semibold text-base-content mb-2" th:text="#{payment.success.title}">
+                    Paiement reussi
+                </h1>
+
+                <p class="text-base-content/70 mb-8" th:text="#{payment.success.message}">
+                    Votre abonnement Premium est maintenant actif.
+                </p>
+
+                <a th:href="@{/dashboard}" class="btn btn-primary px-8">
+                    <span th:text="#{payment.success.cta}">Acceder au tableau de bord</span>
+                </a>
+
+                <p class="text-sm text-base-content/50 mt-8" th:text="#{payment.success.email}">
+                    Un email de confirmation vous a ete envoye.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

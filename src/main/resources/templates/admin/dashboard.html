@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{admin/layout}">
+<head>
+    <title th:text="#{admin.dashboard.title}">Dashboard Admin</title>
+</head>
+<body>
+<div layout:fragment="content">
+
+    <!-- Page header -->
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold text-base-content" th:text="#{admin.dashboard.title}">Dashboard</h1>
+        <p class="text-base-content/60 text-sm mt-1">Vue d'ensemble de votre SaaS</p>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.users}">Users</p>
+            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
+               th:text="${dashboard.totalUsers}">0</p>
+            <p class="mt-2 text-sm text-base-content/50">
+                <span class="font-medium text-primary" th:text="${dashboard.premiumUsers}">0</span>
+                <span> premium</span>
+            </p>
+        </div>
+
+        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.premium}">Premium</p>
+            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
+               th:text="${dashboard.premiumUsers}">0</p>
+            <p class="mt-2 text-sm text-base-content/50">
+                <span class="font-medium"
+                      th:text="${dashboard.totalUsers > 0 ? #numbers.formatDecimal(dashboard.premiumUsers * 100.0 / dashboard.totalUsers, 1, 1) + '%' : '0%'}">0%</span>
+                <span> of total</span>
+            </p>
+        </div>
+
+        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.llm.cost.mtd}">LLM Cost MTD</p>
+            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight">
+                <span>$</span><span th:text="${#numbers.formatDecimal(dashboard.llmCostMtd, 1, 4)}">0.0000</span>
+            </p>
+            <p class="mt-2 text-sm text-base-content/50">Month to date</p>
+        </div>
+
+        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.signups.today}">Signups Today</p>
+            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
+               th:text="${dashboard.signupsToday}">0</p>
+            <p class="mt-2 text-sm text-base-content/50">New accounts today</p>
+        </div>
+
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+
+        <!-- Daily LLM cost line chart -->
+        <div class="lg:col-span-2 bg-base-100 border border-base-200 rounded-xl p-6">
+            <h2 class="text-sm font-semibold text-base-content mb-4" th:text="#{admin.llm.daily.cost}">Daily LLM Cost (30d)</h2>
+            <div id="daily-cost-chart" class="h-72"></div>
+            <script type="application/json" id="daily-cost-data" th:utext="${dashboard.dailyCostJson}">[]</script>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var raw = document.getElementById('daily-cost-data').textContent;
+                    var data = JSON.parse(raw);
+                    if (data.length === 0) {
+                        document.getElementById('daily-cost-chart').innerHTML =
+                            '<div class="h-full flex items-center justify-center text-base-content/40 text-sm">Aucune donnée</div>';
+                        return;
+                    }
+                    new ApexCharts(document.getElementById('daily-cost-chart'), {
+                        chart: { type: 'area', height: '100%', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+                        series: [{ name: 'Cost (USD)', data: data.map(function(d) { return { x: d.date, y: parseFloat(d.cost) }; }) }],
+                        colors: ['#4F46E5'],
+                        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0 } },
+                        stroke: { curve: 'smooth', width: 2 },
+                        dataLabels: { enabled: false },
+                        xaxis: { type: 'datetime' },
+                        yaxis: { labels: { formatter: function(v) { return '$' + v.toFixed(4); } } },
+                        grid: { borderColor: 'rgba(0,0,0,0.06)' },
+                        tooltip: { theme: 'light', x: { format: 'dd MMM yyyy' } }
+                    }).render();
+                });
+            </script>
+        </div>
+
+        <!-- Cost by model donut -->
+        <div class="bg-base-100 border border-base-200 rounded-xl p-6">
+            <h2 class="text-sm font-semibold text-base-content mb-4" th:text="#{admin.llm.by.model}">Cost by Model MTD</h2>
+            <div id="model-donut-chart" class="h-72"></div>
+            <script type="application/json" id="model-donut-data" th:utext="${dashboard.costByModelJson}">[]</script>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    var raw = document.getElementById('model-donut-data').textContent;
+                    var data = JSON.parse(raw);
+                    if (data.length === 0) {
+                        document.getElementById('model-donut-chart').innerHTML =
+                            '<div class="h-full flex items-center justify-center text-base-content/40 text-sm">Aucune donnée</div>';
+                        return;
+                    }
+                    new ApexCharts(document.getElementById('model-donut-chart'), {
+                        chart: { type: 'donut', height: '100%', fontFamily: 'Inter, sans-serif' },
+                        series: data.map(function(d) { return parseFloat(d.cost); }),
+                        labels: data.map(function(d) { return d.model; }),
+                        colors: ['#4F46E5', '#7C3AED', '#EC4899', '#F59E0B', '#10B981'],
+                        legend: { position: 'bottom', fontSize: '12px' },
+                        dataLabels: { enabled: false },
+                        tooltip: { y: { formatter: function(v) { return '$' + v.toFixed(6); } } },
+                        plotOptions: { pie: { donut: { size: '65%' } } }
+                    }).render();
+                });
+            </script>
+        </div>
+
+    </div>
+
+    <!-- Top users by cost table -->
+    <div class="bg-base-100 border border-base-200 rounded-xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-base-content" th:text="#{admin.llm.top.users}">Top Users by Cost MTD</h2>
+            <a th:href="@{/admin/users}" class="btn btn-ghost btn-xs text-primary" th:text="#{common.view.all}">View all</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="table table-sm w-full">
+                <thead>
+                <tr class="text-xs uppercase text-base-content/50">
+                    <th th:text="#{admin.users.col.email}">Email</th>
+                    <th class="text-right" th:text="#{admin.users.col.cost}">LLM Cost</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="row : ${dashboard.topUsersByCost}"
+                    class="hover:bg-base-200/50">
+                    <td>
+                        <a th:href="@{/admin/users/{id}(id=${row.userId})}"
+                           class="text-sm text-primary hover:underline" th:text="${row.email}">user@email.com</a>
+                    </td>
+                    <td class="text-right font-mono tabular-nums text-sm">
+                        $<span th:text="${#numbers.formatDecimal(row.cost, 1, 6)}">0.000000</span>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(dashboard.topUsersByCost)}">
+                    <td colspan="2" class="text-center text-base-content/40 py-8">Aucune donnée</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

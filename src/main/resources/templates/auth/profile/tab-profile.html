@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+    <div th:fragment="content" x-data="{ editMode: false }">
+
+        <!-- Profile Header Card -->
+        <div class="bg-base-100 rounded-xl border border-base-300 overflow-hidden">
+
+            <!-- View Mode -->
+            <div x-show="!editMode" x-cloak>
+                <div class="p-6">
+
+                    <!-- User Avatar and Info -->
+                    <div class="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+
+                        <!-- Avatar with Initials -->
+                        <div class="flex-shrink-0">
+                            <div class="w-24 h-24 rounded-xl bg-gradient-to-br from-primary to-secondary shadow-sm flex items-center justify-center">
+                                <span class="text-3xl font-bold text-white drop-shadow-lg" th:text="${user.initials}">FH</span>
+                            </div>
+                        </div>
+
+                        <!-- User Info -->
+                        <div class="flex-1 text-center sm:text-left">
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                                <h1 class="text-3xl font-bold text-base-content tracking-tight" th:text="${user.fullName}">Fabrice Habumugisha</h1>
+                                <span class="badge badge-lg gap-2 px-4 py-3 font-semibold"
+                                      :class="'[[${user.plan.name()}]]' === 'PREMIUM' ? 'badge-primary shadow-sm' : 'badge-ghost'"
+                                      th:text="${user.plan}">Premium</span>
+                            </div>
+                            <p class="text-base text-base-content/70 mb-4 flex items-center justify-center sm:justify-start gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                <span th:text="${user.email}">fabriceboris@yahoo.fr</span>
+                            </p>
+
+                            <!-- Metadata -->
+                            <div class="flex flex-col sm:flex-row gap-4 text-sm text-base-content/70">
+                                <div class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <span th:text="#{profile.field.member.since}">Member since</span>:
+                                    <span th:text="${#temporals.format(user.createdAt, 'dd MMMM yyyy')}">1 January 2024</span>
+                                </div>
+                                <div class="flex items-center gap-2" th:if="${user.lastLoginAt != null}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span th:text="#{profile.field.last.login}">Last login</span>:
+                                    <span th:text="${#temporals.format(user.lastLoginAt, 'dd MMMM yyyy')}">7 January 2024</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Edit Button -->
+                        <div class="flex-shrink-0">
+                            <button @click="editMode = true"
+                                    class="btn btn-primary gap-2 rounded-xl shadow-sm hover:shadow transition-shadow">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                <span class="font-semibold" th:text="#{profile.action.edit}">Edit Profile</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- Usage Statistics -->
+                <div class="border-t border-base-300/50 p-6 bg-base-200/30" th:if="${usageStats != null}">
+                    <h2 class="text-lg font-semibold text-base-content mb-4">
+                        <span th:text="#{profile.usage.title}">Usage</span>
+                    </h2>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                        <!-- Items Usage -->
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm font-semibold text-base-content" th:text="#{profile.stat.items}">Items</span>
+                                <span class="text-sm font-medium text-base-content/80">
+                                    <span th:text="${usageStats.sermonCount}">2</span>
+                                    <span th:if="${!usageStats.premium}"> / <span th:text="${usageStats.maxSermons}">4</span></span>
+                                    <span th:if="${usageStats.premium}" th:text="#{profile.usage.unlimited}">Unlimited</span>
+                                </span>
+                            </div>
+                            <div class="relative h-3 bg-base-300/50 rounded-full overflow-hidden ring-1 ring-base-300" th:if="${!usageStats.premium}">
+                                <div class="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-secondary to-accent rounded-full transition-all duration-700 ease-out"
+                                     th:style="'width: ' + ${usageStats.sermonPercentage} + '%'"></div>
+                            </div>
+                            <div class="relative h-3 bg-gradient-to-r from-primary via-secondary to-accent rounded-full shadow-sm" th:if="${usageStats.premium}"></div>
+                        </div>
+
+                        <!-- Searches Usage -->
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-sm font-semibold text-base-content" th:text="#{profile.stat.searches}">Searches</span>
+                                <span class="text-sm font-medium text-base-content/80">
+                                    <span th:text="${usageStats.searchCount}">5</span>
+                                    <span th:if="${!usageStats.premium}"> / <span th:text="${usageStats.maxSearches}">10</span></span>
+                                    <span th:if="${usageStats.premium}" th:text="#{profile.usage.unlimited}">Unlimited</span>
+                                </span>
+                            </div>
+                            <div class="relative h-3 bg-base-300/50 rounded-full overflow-hidden ring-1 ring-base-300" th:if="${!usageStats.premium}">
+                                <div class="absolute inset-y-0 left-0 bg-gradient-to-r from-secondary via-accent to-success rounded-full transition-all duration-700 ease-out"
+                                     th:style="'width: ' + ${usageStats.searchPercentage} + '%'"></div>
+                            </div>
+                            <div class="relative h-3 bg-gradient-to-r from-secondary via-accent to-success rounded-full shadow-sm" th:if="${usageStats.premium}"></div>
+                        </div>
+
+                    </div>
+
+                    <!-- Upgrade CTA for Free Users -->
+                    <div class="mt-6 p-5 bg-primary/5 rounded-xl border border-primary/40"
+                         th:if="${!usageStats.premium && (usageStats.sermonPercentage >= 75 || usageStats.searchPercentage >= 75)}">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center flex-shrink-0 shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-semibold text-base-content mb-1" th:text="#{profile.usage.almost.limit}">You are approaching your limit</p>
+                                <p class="text-xs text-base-content/70" th:text="#{profile.upgrade.description}">Unlock all features</p>
+                            </div>
+                            <a th:href="@{/payment/pricing}"
+                               class="btn btn-primary btn-sm gap-2 rounded-xl shadow-sm hover:shadow transition-shadow">
+                                <span class="font-semibold" th:text="#{profile.upgrade.button}">View plans</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Edit Mode -->
+            <div x-show="editMode" x-cloak>
+                <form hx-post="/profile/update"
+                      hx-swap="outerHTML"
+                      hx-target="#tab-content"
+                      th:attr="hx-headers=|{&quot;X-CSRF-TOKEN&quot;: &quot;${_csrf.token}&quot;}|"
+                      class="p-6">
+
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-semibold text-base-content" th:text="#{profile.section.personal.info}">Personal information</h2>
+                        <button type="button" @click="editMode = false"
+                                class="btn btn-ghost btn-sm gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span th:text="#{profile.action.edit.cancel}">Cancel</span>
+                        </button>
+                    </div>
+
+                    <div class="space-y-6">
+
+                        <!-- First Name -->
+                        <div class="form-control group">
+                            <label class="label">
+                                <span class="label-text font-semibold text-base-content/90 group-focus-within:text-primary transition-colors" th:text="#{profile.field.firstName}">First name</span>
+                            </label>
+                            <input type="text"
+                                   name="firstName"
+                                   th:value="${user.firstName}"
+                                   th:placeholder="#{profile.field.firstName.placeholder}"
+                                   class="input input-bordered w-full focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200"
+                                   required
+                                   maxlength="100">
+                        </div>
+
+                        <!-- Last Name -->
+                        <div class="form-control group">
+                            <label class="label">
+                                <span class="label-text font-semibold text-base-content/90 group-focus-within:text-primary transition-colors" th:text="#{profile.field.lastName}">Last name</span>
+                            </label>
+                            <input type="text"
+                                   name="lastName"
+                                   th:value="${user.lastName}"
+                                   th:placeholder="#{profile.field.lastName.placeholder}"
+                                   class="input input-bordered w-full focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200"
+                                   required
+                                   maxlength="100">
+                        </div>
+
+                        <!-- Email (Read-only) -->
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text font-medium" th:text="#{profile.field.email}">Email</span>
+                                <span class="label-text-alt text-base-content/50" th:text="#{profile.email.readonly}">Read-only</span>
+                            </label>
+                            <input type="email"
+                                   th:value="${user.email}"
+                                   class="input input-bordered w-full bg-base-200 cursor-not-allowed"
+                                   disabled>
+                        </div>
+
+                        <!-- Plan (Read-only) -->
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text font-medium" th:text="#{profile.field.plan}">Plan</span>
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <span class="badge badge-lg"
+                                      :class="'[[${user.plan.name()}]]' === 'PREMIUM' ? 'badge-primary' : 'badge-ghost'"
+                                      th:text="${user.plan}">Premium</span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex items-center gap-4 mt-8 pt-6 border-base-300/50">
+                        <button type="submit" class="btn btn-primary gap-2 rounded-xl shadow-sm hover:shadow transition-shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span class="font-semibold" th:text="#{profile.action.save}">Save changes</span>
+                        </button>
+                        <button type="button" @click="editMode = false"
+                                class="btn btn-ghost rounded-xl hover:bg-base-200 transition-colors"
+                                th:text="#{common.cancel}">Cancel</button>
+                    </div>
+
+                </form>
+            </div>
+
+        </div>
+
+    </div>
+</body>
+</html>

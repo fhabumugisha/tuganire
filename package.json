@@ -1,0 +1,25 @@
+{
+  "name": "tuganire",
+  "version": "1.0.0",
+  "description": "Frontend assets for Tuganire Spring Boot Template",
+  "type": "module",
+  "scripts": {
+    "build": "postcss ./src/main/resources/static/css/input.css -o ./src/main/resources/static/css/styles.css --minify",
+    "build-prod": "cross-env NODE_ENV=production postcss ./src/main/resources/static/css/input.css -o ./src/main/resources/static/css/styles.css --minify",
+    "watch": "postcss ./src/main/resources/static/css/input.css -o ./src/main/resources/static/css/styles.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "autoprefixer": "^10.4.16",
+    "cross-env": "^7.0.3",
+    "cssnano": "^6.0.2",
+    "daisyui": "^5.0.37",
+    "postcss": "^8.5.3",
+    "postcss-cli": "^11.0.1",
+    "tailwindcss": "^4.1.7"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.1.7"
+  }
+}

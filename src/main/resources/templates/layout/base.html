@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+    <title layout:title-pattern="$CONTENT_TITLE - $LAYOUT_TITLE">Tuganire</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <th:block layout:fragment="stylesheets"></th:block>
+    <script th:src="@{/webjars/htmx.org/dist/htmx.min.js}"></script>
+    <script th:src="@{/webjars/htmx-ext-sse/sse.js}"></script>
+    <script th:src="@{/webjars/alpinejs/dist/cdn.min.js}" defer></script>
+    <th:block layout:fragment="scripts"></th:block>
+    <style>
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: hsl(var(--p));
+            color: hsl(var(--pc));
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            z-index: 100;
+            border-radius: 0 0 0.5rem 0;
+            font-weight: 600;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-base-100 flex flex-col antialiased">
+    <a href="#main-content" class="skip-link" th:text="#{a11y.skip.to.content}">Skip to main content</a>
+
+    <div th:replace="~{fragments/navbar :: navbar}"></div>
+
+    <main id="main-content" role="main" class="flex-1 w-full">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div th:replace="~{fragments/alerts :: alerts}"></div>
+        </div>
+        <div layout:fragment="content"></div>
+    </main>
+
+    <div th:replace="~{fragments/footer :: footer}"></div>
+
+    <div th:replace="~{fragments/cookie-banner :: cookieBanner}"></div>
+</body>
+</html>

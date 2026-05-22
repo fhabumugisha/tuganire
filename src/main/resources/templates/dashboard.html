@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{dashboard.title}">Tableau de bord</title>
+</head>
+<body>
+    <div layout:fragment="content"
+         th:with="now=${#temporals.createNow()},
+                  hour=${#temporals.hour(now)},
+                  day=${#temporals.day(now)},
+                  monthName=${#temporals.format(now, 'MMMM')},
+                  todayLabel=${#temporals.format(now, 'EEEE d MMMM')},
+                  displayName=${user.firstName != null and !user.firstName.isBlank() ? user.firstName : #strings.substringBefore(user.email, '@')}">
+
+        <!-- ====== HERO ====== -->
+        <section class="relative overflow-hidden border-b border-base-200 paper-grain">
+
+            <!-- Faint dotted texture -->
+            <div class="absolute inset-0 bg-dot-grid-faint pointer-events-none" aria-hidden="true"></div>
+            <!-- Soft indigo wash, top-right -->
+            <div class="absolute -top-40 -right-32 w-[520px] h-[520px] rounded-full pointer-events-none opacity-60"
+                 style="background: radial-gradient(closest-side, color-mix(in oklab, var(--color-primary) 18%, transparent), transparent 70%);"
+                 aria-hidden="true"></div>
+
+            <!-- Giant editorial day-mark (today's day-of-month, outlined serif) -->
+            <div class="hidden md:block absolute -right-2 lg:-right-4 top-2 lg:top-4 select-none pointer-events-none leading-none"
+                 aria-hidden="true">
+                <div class="font-display italic text-[clamp(11rem,22vw,20rem)] tracking-tight"
+                     style="color: transparent; -webkit-text-stroke: 1px color-mix(in oklab, var(--color-base-content) 14%, transparent);"
+                     th:text="${day}">20</div>
+            </div>
+
+            <div class="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-16 pb-12 sm:pb-16">
+
+                <!-- Eyebrow + today date -->
+                <div class="flex flex-wrap items-center gap-3 mb-6 text-xs uppercase tracking-[0.18em] text-base-content/55 dash-reveal">
+                    <span class="inline-flex items-center gap-2">
+                        <span class="inline-block w-6 h-px bg-base-content/30"></span>
+                        <span th:text="#{dashboard.eyebrow}">Espace personnel</span>
+                    </span>
+                    <span class="hidden sm:inline text-base-content/25">/</span>
+                    <span class="inline-flex items-center gap-2 text-base-content/55">
+                        <span class="relative inline-flex w-2 h-2">
+                            <span class="absolute inset-0 rounded-full bg-success/60 pulse-soft"></span>
+                            <span class="absolute inset-[2px] rounded-full bg-success"></span>
+                        </span>
+                        <span th:text="${todayLabel}">mardi 20 mai</span>
+                    </span>
+                </div>
+
+                <!-- Headline -->
+                <h1 class="relative text-4xl sm:text-5xl lg:text-6xl leading-[1.02] tracking-tight text-base-content max-w-3xl dash-reveal dash-delay-1">
+                    <span class="font-semibold"
+                          th:text="${hour &lt; 5 ? #messages.msg('dashboard.greeting.night')
+                                  : (hour &lt; 12 ? #messages.msg('dashboard.greeting.morning')
+                                  : (hour &lt; 18 ? #messages.msg('dashboard.greeting.afternoon')
+                                  : #messages.msg('dashboard.greeting.evening')))}">Bonjour</span><span class="font-semibold">,</span>
+                    <br class="hidden sm:block">
+                    <span class="relative inline-block">
+                        <span class="font-display italic font-normal text-primary"
+                              th:text="${displayName}">Fabrice</span>
+                        <!-- Hand-drawn amber underline -->
+                        <svg class="dash-underline absolute left-0 -bottom-2 sm:-bottom-3 w-full h-3 sm:h-4"
+                             viewBox="0 0 240 14" fill="none" preserveAspectRatio="none" aria-hidden="true">
+                            <path d="M2 9 C 50 2, 110 14, 168 6 S 232 8, 238 5"
+                                  stroke="var(--color-brand-amber)" stroke-width="2.2" stroke-linecap="round"/>
+                        </svg>
+                    </span><span class="font-display italic font-normal">.</span>
+                </h1>
+
+                <p class="mt-6 text-base sm:text-lg text-base-content/60 max-w-xl leading-relaxed dash-reveal dash-delay-2"
+                   th:text="#{dashboard.welcome.subtitle}">
+                    Que souhaitez-vous faire aujourd'hui ?
+                </p>
+
+                <!-- Ledger row: editorial meta line, replaces boxy stat strip -->
+                <dl class="mt-8 sm:mt-10 flex flex-wrap items-baseline gap-x-6 gap-y-3 text-sm dash-reveal dash-delay-3">
+
+                    <!-- Plan -->
+                    <div class="flex items-baseline gap-2">
+                        <dt class="text-[11px] uppercase tracking-[0.16em] text-base-content/45 font-medium" th:text="#{dashboard.stat.plan}">Plan actuel</dt>
+                        <dd>
+                            <span th:if="${user.plan.name() == 'FREE'}"
+                                  class="font-display text-lg italic text-base-content"
+                                  th:text="#{plan.free}">Gratuit</span>
+                            <span th:if="${user.plan.name() == 'PREMIUM'}"
+                                  class="font-display text-lg italic text-primary"
+                                  th:text="#{plan.premium}">Premium</span>
+                        </dd>
+                    </div>
+
+                    <span class="text-base-content/20" aria-hidden="true">·</span>
+
+                    <!-- Member since -->
+                    <div class="flex items-baseline gap-2">
+                        <dt class="text-[11px] uppercase tracking-[0.16em] text-base-content/45 font-medium" th:text="#{dashboard.stat.member.since}">Membre depuis</dt>
+                        <dd class="font-display text-lg italic text-base-content"
+                            th:text="${#temporals.format(user.createdAt, 'MMM yyyy')}">mai 2026</dd>
+                    </div>
+
+                    <span class="text-base-content/20" aria-hidden="true">·</span>
+
+                    <!-- Last login -->
+                    <div class="flex items-baseline gap-2">
+                        <dt class="text-[11px] uppercase tracking-[0.16em] text-base-content/45 font-medium" th:text="#{dashboard.stat.last.login}">Dernière connexion</dt>
+                        <dd th:if="${user.lastLoginAt != null}" class="font-display text-lg italic text-base-content"
+                            th:text="${#temporals.format(user.lastLoginAt, 'dd MMM · HH:mm')}">20 mai · 17:40</dd>
+                        <dd th:if="${user.lastLoginAt == null}" class="font-display text-lg italic text-base-content/65"
+                            th:text="#{dashboard.stat.last.login.never}">Première visite</dd>
+                    </div>
+
+                </dl>
+
+                <!-- Status chip cluster -->
+                <div class="mt-6 flex flex-wrap items-center gap-2 dash-reveal dash-delay-4">
+
+                    <span th:if="${user.emailVerified}"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success border border-success/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.59l7.3-7.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
+                        <span th:text="#{dashboard.email.verified}">Email vérifié</span>
+                    </span>
+                    <span th:unless="${user.emailVerified}"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/25">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.515 2.625H3.72c-1.345 0-2.188-1.458-1.515-2.625l6.28-10.875ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>
+                        <span th:text="#{dashboard.email.unverified}">Email non vérifié</span>
+                    </span>
+
+                    <span th:if="${user.admin}"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/25">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1.5 2 5v4c0 5 3.5 8.5 8 9.5 4.5-1 8-4.5 8-9.5V5l-8-3.5Z"/></svg>
+                        <span th:text="#{dashboard.role.admin}">Admin</span>
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== QUICK ACTIONS ====== -->
+        <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14 sm:mt-20">
+
+            <header class="flex items-end justify-between gap-4 mb-6 sm:mb-8 dash-reveal dash-delay-4">
+                <div>
+                    <div class="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-base-content/55 mb-1.5">
+                        <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+                        <span th:text="#{dashboard.section.actions}">Démarrage rapide</span>
+                    </div>
+                    <h2 class="font-display text-3xl sm:text-4xl text-base-content tracking-tight" th:text="#{dashboard.section.actions.sub}">Commencez ici.</h2>
+                </div>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+
+                <!-- I — Profile -->
+                <a th:href="@{/profile}"
+                   class="group relative card-lift top-sweep bg-base-100 border border-base-200 rounded-2xl p-6 flex flex-col h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dash-reveal dash-delay-4">
+                    <div class="flex items-center justify-between mb-7">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-base-200 text-base-content/80 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M16 14a4 4 0 1 0-8 0m12 7a8 8 0 1 0-16 0"/></svg>
+                        </div>
+                        <span class="roman-mark font-display italic text-xl text-base-content/35">I</span>
+                    </div>
+                    <h3 class="font-display text-2xl text-base-content leading-tight mb-1" th:text="#{dashboard.action.profile}">Mon profil</h3>
+                    <p class="text-sm text-base-content/60 leading-relaxed flex-1" th:text="#{dashboard.action.profile.desc}">Gérer votre compte</p>
+                    <div class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-base-content/80 group-hover:text-primary transition-colors">
+                        <span th:text="#{dashboard.action.profile.cta}">Ouvrir le profil</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-5-5m5 5-5 5"/></svg>
+                    </div>
+                </a>
+
+                <!-- II — Blog -->
+                <a th:href="@{/blog}"
+                   class="group relative card-lift top-sweep bg-base-100 border border-base-200 rounded-2xl p-6 flex flex-col h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dash-reveal dash-delay-5">
+                    <div class="flex items-center justify-between mb-7">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-base-200 text-base-content/80 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h10M4 18h7"/></svg>
+                        </div>
+                        <span class="roman-mark font-display italic text-xl text-base-content/35">II</span>
+                    </div>
+                    <h3 class="font-display text-2xl text-base-content leading-tight mb-1" th:text="#{dashboard.action.blog}">Explorer le blog</h3>
+                    <p class="text-sm text-base-content/60 leading-relaxed flex-1" th:text="#{dashboard.action.blog.desc}">Articles, guides et nouveautés</p>
+                    <div class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-base-content/80 group-hover:text-primary transition-colors">
+                        <span th:text="#{dashboard.action.blog.cta}">Lire les articles</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-5-5m5 5-5 5"/></svg>
+                    </div>
+                </a>
+
+                <!-- III — Upgrade (FREE) -->
+                <a th:if="${user.plan.name() == 'FREE'}"
+                   th:href="@{/payment/pricing}"
+                   class="group relative card-lift rounded-2xl p-6 flex flex-col h-full text-primary-content overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dash-reveal dash-delay-6"
+                   style="background: linear-gradient(140deg, #1E1B4B 0%, #4338CA 50%, #4F46E5 100%);">
+                    <!-- Decorative concentric arcs -->
+                    <svg class="absolute -bottom-14 -right-12 w-64 h-64 opacity-[0.16] pointer-events-none" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+                        <circle cx="100" cy="100" r="94" stroke="white" stroke-width="0.6"/>
+                        <circle cx="100" cy="100" r="68" stroke="white" stroke-width="0.6"/>
+                        <circle cx="100" cy="100" r="42" stroke="white" stroke-width="0.6"/>
+                        <circle cx="100" cy="100" r="18" stroke="white" stroke-width="0.6"/>
+                    </svg>
+                    <!-- Top-right amber spark -->
+                    <div class="absolute top-5 right-5 w-1.5 h-1.5 rounded-full pulse-soft"
+                         style="background: var(--color-brand-amber); box-shadow: 0 0 12px var(--color-brand-amber);" aria-hidden="true"></div>
+
+                    <div class="relative flex items-center justify-between mb-7">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white/15 text-white backdrop-blur-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2.5 7.5 5 4l3 3 2-4 2 4 3-3 2.5 3.5L17 16H3L2.5 7.5Z"/></svg>
+                        </div>
+                        <span class="font-display italic text-xl text-white/55">III</span>
+                    </div>
+                    <h3 class="relative font-display text-2xl leading-tight mb-1" th:text="#{dashboard.action.upgrade}">Passer Premium</h3>
+                    <p class="relative text-sm text-white/75 leading-relaxed flex-1" th:text="#{dashboard.action.upgrade.desc}">Débloquer toutes les fonctionnalités</p>
+                    <div class="relative mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-white">
+                        <span th:text="#{dashboard.action.upgrade.cta}">Voir les offres</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-5-5m5 5-5 5"/></svg>
+                    </div>
+                </a>
+
+                <!-- III — Admin (Premium admins) -->
+                <a th:if="${user.plan.name() == 'PREMIUM' and user.admin}"
+                   th:href="@{/admin}"
+                   class="group relative card-lift top-sweep bg-base-100 border border-base-200 rounded-2xl p-6 flex flex-col h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 dash-reveal dash-delay-6">
+                    <div class="flex items-center justify-between mb-7">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-accent/10 text-accent">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-3Z"/></svg>
+                        </div>
+                        <span class="roman-mark font-display italic text-xl text-base-content/35">III</span>
+                    </div>
+                    <h3 class="font-display text-2xl text-base-content leading-tight mb-1" th:text="#{dashboard.action.admin}">Console admin</h3>
+                    <p class="text-sm text-base-content/60 leading-relaxed flex-1" th:text="#{dashboard.action.admin.desc}">Utilisateurs, métriques, contenu</p>
+                    <div class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-base-content/80 group-hover:text-accent transition-colors">
+                        <span th:text="#{dashboard.action.admin.cta}">Accéder à l'admin</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m0 0-5-5m5 5-5 5"/></svg>
+                    </div>
+                </a>
+
+                <!-- III — Premium non-admin acknowledgement -->
+                <div th:if="${user.plan.name() == 'PREMIUM' and !user.admin}"
+                     class="relative rounded-2xl p-6 flex flex-col h-full border border-primary/20 bg-primary/5 dash-reveal dash-delay-6">
+                    <div class="flex items-center justify-between mb-7">
+                        <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2.5 7.5 5 4l3 3 2-4 2 4 3-3 2.5 3.5L17 16H3L2.5 7.5Z"/></svg>
+                        </div>
+                        <span class="font-display italic text-xl text-primary/55">III</span>
+                    </div>
+                    <h3 class="font-display text-2xl text-base-content leading-tight mb-1" th:text="#{plan.premium}">Plan Premium</h3>
+                    <p class="text-sm text-base-content/65 leading-relaxed" th:text="#{dashboard.usage.premium.body}">Plan Premium actif. Tout est débloqué.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== BUILD SLOT ====== -->
+        <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-14 sm:mt-20 mb-16 sm:mb-24">
+            <div class="relative rounded-2xl border border-dashed border-base-300 bg-base-200/40 px-6 sm:px-10 py-10 sm:py-14 dash-reveal dash-delay-6">
+                <!-- Amber corner crosses -->
+                <span class="absolute top-3 left-3 text-xs font-mono select-none" style="color: color-mix(in oklab, var(--color-brand-amber) 55%, transparent);" aria-hidden="true">+</span>
+                <span class="absolute top-3 right-3 text-xs font-mono select-none" style="color: color-mix(in oklab, var(--color-brand-amber) 55%, transparent);" aria-hidden="true">+</span>
+                <span class="absolute bottom-3 left-3 text-xs font-mono select-none" style="color: color-mix(in oklab, var(--color-brand-amber) 55%, transparent);" aria-hidden="true">+</span>
+                <span class="absolute bottom-3 right-3 text-xs font-mono select-none" style="color: color-mix(in oklab, var(--color-brand-amber) 55%, transparent);" aria-hidden="true">+</span>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <div class="lg:col-span-7">
+                        <div class="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-base-content/50 font-medium mb-2">
+                            <span class="inline-block w-1 h-1 rounded-full" style="background: var(--color-brand-amber);"></span>
+                            <span th:text="#{dashboard.placeholder}">Ajoutez vos fonctionnalités ici.</span>
+                        </div>
+                        <h3 class="font-display text-3xl sm:text-4xl text-base-content tracking-tight leading-tight"
+                            th:text="#{dashboard.slot.title}">Votre espace de travail</h3>
+                        <p class="mt-3 text-base-content/65 leading-relaxed max-w-xl"
+                           th:text="#{dashboard.slot.body}">Composez ici les fonctionnalités propres à votre produit — listes, projets, métriques métier.</p>
+                    </div>
+                    <div class="lg:col-span-5">
+                        <div class="rounded-xl border border-base-300/70 bg-base-100/60 backdrop-blur-sm p-4 font-mono text-xs leading-relaxed text-base-content/70">
+                            <div class="flex items-center gap-2 mb-2 text-base-content/40">
+                                <span class="inline-block w-2 h-2 rounded-full bg-error/60"></span>
+                                <span class="inline-block w-2 h-2 rounded-full bg-warning/60"></span>
+                                <span class="inline-block w-2 h-2 rounded-full bg-success/60"></span>
+                                <span class="ml-2 text-[10px] uppercase tracking-[0.16em]">templates</span>
+                            </div>
+                            <div><span class="text-base-content/40">$</span> <span class="text-base-content">code</span> <span style="color: var(--color-brand-amber);">templates/dashboard.html</span></div>
+                            <p class="mt-2 text-base-content/55 font-sans" th:text="#{dashboard.slot.hint}">Modifiez templates/dashboard.html pour les brancher.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</body>
+</html>

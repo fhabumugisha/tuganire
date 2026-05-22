@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{legal.privacy.title}">Politique de confidentialité</title>
+</head>
+<body>
+    <div layout:fragment="content">
+        <article class="article-prose mx-auto max-w-3xl py-12 px-4">
+            <h1 th:text="#{legal.privacy.title}">Politique de confidentialité</h1>
+
+            <h2 th:text="#{legal.privacy.section.data}">Données collectées</h2>
+            <p th:text="#{legal.privacy.section.data.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+
+            <h2 th:text="#{legal.privacy.section.purposes}">Finalités</h2>
+            <p th:text="#{legal.privacy.section.purposes.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+
+            <h2 th:text="#{legal.privacy.section.basis}">Base légale</h2>
+            <p th:text="#{legal.privacy.section.basis.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+
+            <h2 th:text="#{legal.privacy.section.retention}">Durée de conservation</h2>
+            <p th:text="#{legal.privacy.section.retention.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+
+            <h2 th:text="#{legal.privacy.section.rights}">Vos droits RGPD</h2>
+            <p th:text="#{legal.privacy.section.rights.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+
+            <h2 th:text="#{legal.privacy.section.contact}">Contact</h2>
+            <p th:text="#{legal.privacy.section.contact.body}">
+                [TODO: à compléter selon le produit forké]
+            </p>
+        </article>
+    </div>
+</body>
+</html>

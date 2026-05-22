@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:fragment="cookieBanner"
+     x-data="{
+       open: !localStorage.getItem('cookie-consent'),
+       accept() { localStorage.setItem('cookie-consent', 'accepted'); this.open = false; },
+       refuse() { localStorage.setItem('cookie-consent', 'refused'); this.open = false; }
+     }"
+     x-show="open"
+     x-transition
+     class="fixed bottom-0 inset-x-0 z-50 bg-base-100 border-t border-base-200 shadow-lg"
+     style="display: none">
+    <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center gap-4">
+        <p class="text-sm flex-1" th:utext="#{cookie.banner.message}">
+            Nous utilisons uniquement des cookies essentiels. <a th:href="@{/privacy}" class="link">En savoir plus</a>.
+        </p>
+        <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" @click="refuse()" th:text="#{cookie.banner.refuse}">Refuser</button>
+            <button class="btn btn-primary btn-sm" @click="accept()" th:text="#{cookie.banner.accept}">Accepter</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>

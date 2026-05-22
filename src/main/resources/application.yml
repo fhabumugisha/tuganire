@@ -1,0 +1,187 @@
+server:
+  forward-headers-strategy: native
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: tuganire
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.7
+      image:
+        options:
+          model: gpt-image-1
+          size: 1536x1024
+
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST:localhost:5432/tuganire}?user=${DATABASE_USERNAME:postgres}&password=${DATABASE_PASSWORD:postgres}&sslmode=prefer
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  thymeleaf:
+    cache: true
+    prefix: classpath:/templates/
+    suffix: .html
+    encoding: UTF-8
+    mode: HTML
+
+  messages:
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
+
+  web:
+    locale: fr
+    resources:
+      cache:
+        cachecontrol:
+          max-age: 31536000
+          cache-public: true
+          must-revalidate: true
+        use-last-modified: true
+
+  mvc:
+    async:
+      request-timeout: 300000
+
+  webflux:
+    client:
+      timeout:
+        connect: 10s
+        read: 60s
+        write: 10s
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 4MB
+      max-request-size: 20MB
+      file-size-threshold: 2KB
+
+  cloud:
+    aws:
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:changeme}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:changeme}
+      region:
+        static: ${AWS_REGION:us-east-1}
+      s3:
+        enabled: ${AWS_S3_ENABLED:false}
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:changeme}
+    password: ${MAIL_PASSWORD:changeme}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+app:
+  mail:
+    from: ${MAIL_FROM:noreply@example.com}
+  storage:
+    s3:
+      bucket-name: ${AWS_S3_BUCKET_NAME:tuganire-storage}
+      prefix: ${AWS_S3_PREFIX:}
+    local:
+      directory: ${LOCAL_STORAGE_DIR:${java.io.tmpdir}/tuganire-storage}
+
+stripe:
+  api-key: ${STRIPE_API_KEY:sk_test_placeholder}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
+  price-id-monthly: ${STRIPE_PRICE_ID_MONTHLY:price_monthly_placeholder}
+  price-id-yearly: ${STRIPE_PRICE_ID_YEARLY:price_yearly_placeholder}
+  success-url: ${BASE_URL:http://localhost:8080}/payment/success?session_id={CHECKOUT_SESSION_ID}
+  cancel-url: ${BASE_URL:http://localhost:8080}/payment/cancel
+
+tuganire:
+  base-url: ${BASE_URL:http://localhost:8080}
+  oauth:
+    google:
+      # Leave blank to keep social login disabled. When set, a "Continue with Google" button appears on /login
+      # and the OAuth2 client is wired in SecurityConfig.
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+  freemium:
+    max-items: 40
+  ai-models:
+    models:
+      openai-gpt4o-mini:
+        name: gpt-4o-mini
+        enabled: true
+        input-rate-per-million-tokens: 0.15
+        output-rate-per-million-tokens: 0.60
+        currency: USD
+      openai-gpt4o:
+        name: gpt-4o
+        enabled: true
+        input-rate-per-million-tokens: 2.50
+        output-rate-per-million-tokens: 10.00
+        currency: USD
+      anthropic-haiku:
+        name: claude-haiku-4-5
+        enabled: true
+        input-rate-per-million-tokens: 1.00
+        output-rate-per-million-tokens: 5.00
+        currency: USD
+      anthropic-sonnet:
+        name: claude-sonnet-4-6
+        enabled: true
+        input-rate-per-million-tokens: 3.00
+        output-rate-per-million-tokens: 15.00
+        currency: USD
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+info:
+  app:
+    name: ${spring.application.name}
+    version: '@project.version@'
+
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: ${SPRING_PROFILES_ACTIVE:default}
+  traces-sample-rate: 0.1
+  send-default-pii: false
+
+logging:
+  level:
+    com.tuganire: INFO

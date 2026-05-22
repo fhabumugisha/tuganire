@@ -1,0 +1,155 @@
+---
+description: Active on Java , Spring Boot and all backend related code
+globs: **/*.java
+alwaysApply: false
+---
+---
+description: Active on Java , Spring Boot and all backend related code
+globs: **/*.java
+alwaysApply: true
+---
+
+# Cursor AI Rules for Spring Boot 3 Project
+
+## General Guidelines
+- Act as a **Senior Java Developer** following SOLID, DRY, KISS, and YAGNI principles.
+- Use **Java 21** and **Spring Boot 3** conventions.
+- Follow **OWASP security best practices** (e.g., input validation, CSRF protection).
+- Generate **clean, production-ready code** with appropriate comments.
+
+## Project Structure
+- Use **Maven** as the build tool.
+- Organize code into **controller, service, repository, and model** packages.
+- Use **Lombok** for boilerplate reduction (`@Data`, `@Builder`, `@AllArgsConstructor`).
+- Use Lombok for dependency injection
+- Return **Dtos instead of entities** in controllers.
+- Add package declaration and all imports
+- Use feature driven package naming
+- Use records when appropriate
+- Use mappers for conversion from entity to dto or dto to entity
+- Internationalize all messages. Use text from messages.properties , messages_en.properties and messages_fr.properties
+- Use constants instead of duplicated string texts in java classes
+- Use application.yaml for application properties
+- Use GlobalExceptionHandler for exceptions management
+
+## Entity & Repository Rules
+- Define entities in `com.example.model` with:
+  - `@Entity`
+  - `@Table(name = "table_name")`
+  - `@Id @GeneratedValue(strategy = GenerationType.IDENTITY)`
+  - Proper `@OneToMany` and `@ManyToOne` relationships.
+  - `@JsonIgnore` to prevent infinite recursion in bidirectional relationships.
+
+- Define repositories in `com.example.repository`:
+  - Extend `JpaRepository<Entity, Long>`.
+  - Use `@Query` for custom queries.
+  - Use `@EntityGraph` to optimize joins.
+  - Use if applicable soft delete feature when querying ( add fields like deleted_at or id_deleted)
+  - Use if applicable auditing feature ,  add fields like created_by, created_at, last_modified
+
+## Service Layer Rules
+- Services should be interfaces with `@Service` implementations.
+- Use **constructor-based dependency injection**.
+- Annotate transactional methods with `@Transactional`.
+- Generate java documentation on all methods of service interfaces
+
+
+## Controller Guidelines
+- Define controllers in `com.example.controller`.
+- Use `@RestController` and `@RequestMapping("/api/resource")`.
+- Define endpoints with `@GetMapping`, `@PostMapping`, etc.
+- Use `@Valid` for request validation.
+- Return `ResponseEntity<ApiResponse<T>>`.
+- Add  OpenAPI Specification to document and test APIs
+
+Testing
+- Write unit tests using JUnit 5 and Spring Boot Test.
+- Use MockMvc for testing web layers.
+- Implement integration tests using @SpringBootTest.
+- Use @DataJpaTest for repository layer tests.
+- Use MockitoExtesion for Service Layer Unit Tests
+- Follow **Given-When-Then** structure for test cases.
+- Ensure 80%+ test coverage but prioritize meaningful tests over coverage numbers.
+-  Use maven surefire and failsafe plugins
+
+Build and Deployment
+- Use Maven for dependency management and build processes.
+- Implement proper profiles for different environments (dev, test, prod).
+- Use Docker for containerization if applicable with maven JIB plugin.
+
+
+## Exception Handling
+- Implement a **Global Exception Handler** (`@ControllerAdvice`).
+- Handle:
+  - `ResourceNotFoundException` (404)
+  - `ValidationException` (400)
+  - `AccessDeniedException` (403)
+
+## Security Best Practices
+- Use **Spring Security** with JWT-based authentication.
+- Protect sensitive endpoints with `@PreAuthorize`.
+
+## Example Code Snippets
+### Sample Entity
+```java
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String password;
+}
+
+```
+
+### Sample Repository
+```java
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUsername(String username);
+}
+
+```
+
+### Sample Controller
+
+```java
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    private final UserService userService;
+
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDto> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserById(id));
+    }
+}
+
+```
+
+### Sample Controller
+
+```java
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+    private final UserService userService;
+
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDto> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserById(id));
+    }
+}
+
+```

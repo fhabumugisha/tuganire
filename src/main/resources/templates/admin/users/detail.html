@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{admin/layout}">
+<head>
+    <title th:text="#{admin.user.detail.title}">User Detail</title>
+</head>
+<body>
+<div layout:fragment="content">
+
+    <!-- Breadcrumb -->
+    <div class="text-sm breadcrumbs mb-4 text-base-content/50">
+        <ul>
+            <li><a th:href="@{/admin}" class="hover:text-primary">Admin</a></li>
+            <li><a th:href="@{/admin/users}" class="hover:text-primary" th:text="#{admin.users.title}">Users</a></li>
+            <li th:text="${user.email}"></li>
+        </ul>
+    </div>
+
+    <!-- Page header -->
+    <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <h1 class="text-2xl font-bold text-base-content"
+                    th:text="${(user.firstName ?: '') + ' ' + (user.lastName ?: '')}">User Name</h1>
+                <span th:if="${user.admin}" class="badge badge-warning">Admin</span>
+                <span th:if="${user.plan.name() == 'PREMIUM'}" class="badge badge-primary">Premium</span>
+                <span th:if="${user.plan.name() == 'FREE'}" class="badge badge-ghost">Free</span>
+            </div>
+            <p class="text-base-content/60 text-sm mt-1" th:text="${user.email}"></p>
+        </div>
+        <div class="flex gap-2">
+            <form th:action="@{/admin/users/{id}/toggle-admin(id=${user.id})}" method="post">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <button type="submit" class="btn btn-sm btn-outline"
+                        th:text="#{admin.action.toggle.admin}">Toggle Admin</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div x-data="{ tab: 'profile' }" class="w-full">
+        <div role="tablist" class="tabs tabs-bordered tabs-lg mb-6">
+            <button role="tab" class="tab"
+                    :class="{ 'tab-active': tab === 'profile' }"
+                    @click="tab = 'profile'"
+                    th:text="#{admin.tab.profile}">Profile</button>
+            <button role="tab" class="tab"
+                    :class="{ 'tab-active': tab === 'subscription' }"
+                    @click="tab = 'subscription'"
+                    th:text="#{admin.tab.subscription}">Subscription</button>
+            <button role="tab" class="tab"
+                    :class="{ 'tab-active': tab === 'llm' }"
+                    @click="tab = 'llm'"
+                    th:text="#{admin.tab.llm}">LLM Usage</button>
+            <button role="tab" class="tab"
+                    :class="{ 'tab-active': tab === 'danger' }"
+                    @click="tab = 'danger'"
+                    th:text="#{admin.tab.danger}">Danger Zone</button>
+        </div>
+
+        <!-- Profile tab -->
+        <div x-show="tab === 'profile'" class="bg-base-100 border border-base-200 rounded-xl p-6">
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">ID</dt>
+                    <dd class="mt-1 font-mono tabular-nums text-sm" th:text="${user.id}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium" th:text="#{admin.users.col.email}">Email</dt>
+                    <dd class="mt-1 text-sm" th:text="${user.email}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">First name</dt>
+                    <dd class="mt-1 text-sm" th:text="${user.firstName ?: '—'}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Last name</dt>
+                    <dd class="mt-1 text-sm" th:text="${user.lastName ?: '—'}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Plan</dt>
+                    <dd class="mt-1 text-sm" th:text="${user.plan}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium" th:text="#{admin.users.col.signup}">Signup</dt>
+                    <dd class="mt-1 text-sm"
+                        th:text="${user.createdAt != null ? #temporals.format(user.createdAt, 'dd MMM yyyy HH:mm') : '—'}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Last login</dt>
+                    <dd class="mt-1 text-sm"
+                        th:text="${user.lastLoginAt != null ? #temporals.format(user.lastLoginAt, 'dd MMM yyyy HH:mm') : '—'}"></dd>
+                </div>
+                <div>
+                    <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Admin</dt>
+                    <dd class="mt-1 text-sm" th:text="${user.admin ? 'Yes' : 'No'}"></dd>
+                </div>
+            </dl>
+        </div>
+
+        <!-- Subscription tab -->
+        <div x-show="tab === 'subscription'" x-cloak class="bg-base-100 border border-base-200 rounded-xl p-6">
+            <div th:if="${user.subscription != null}">
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+                    <div>
+                        <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Stripe Subscription ID</dt>
+                        <dd class="mt-1 font-mono text-xs break-all" th:text="${user.subscription.stripeSubscriptionId}"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Status</dt>
+                        <dd class="mt-1 text-sm" th:text="${user.subscription.status}"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Plan</dt>
+                        <dd class="mt-1 text-sm" th:text="${user.subscription.plan}"></dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs uppercase tracking-wider text-base-content/50 font-medium">Period end</dt>
+                        <dd class="mt-1 text-sm"
+                            th:text="${#temporals.format(user.subscription.currentPeriodEnd, 'dd MMM yyyy')}"></dd>
+                    </div>
+                </dl>
+            </div>
+            <div th:if="${user.subscription == null}"
+                 class="flex flex-col items-center justify-center py-12 text-base-content/40">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                </svg>
+                <p>No active subscription</p>
+            </div>
+        </div>
+
+        <!-- LLM Usage tab -->
+        <div x-show="tab === 'llm'" x-cloak class="space-y-4">
+            <div class="bg-base-100 border border-base-200 rounded-xl p-4">
+                <p class="text-xs uppercase tracking-wider text-base-content/50 font-medium mb-1">Total LLM cost</p>
+                <p class="text-3xl font-mono tabular-nums font-semibold">
+                    $<span th:text="${user.totalLlmCost != null ? #numbers.formatDecimal(user.totalLlmCost, 1, 6) : '0.000000'}"></span>
+                </p>
+            </div>
+            <div class="bg-base-100 border border-base-200 rounded-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="table table-sm w-full">
+                        <thead class="bg-base-200/50">
+                        <tr class="text-xs uppercase text-base-content/50">
+                            <th>Date</th>
+                            <th>Provider</th>
+                            <th>Model</th>
+                            <th>Feature</th>
+                            <th class="text-right">Prompt</th>
+                            <th class="text-right">Completion</th>
+                            <th class="text-right">Cost</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="evt : ${user.recentLlmEvents}" class="hover:bg-base-200/30">
+                            <td class="text-xs text-base-content/60"
+                                th:text="${#temporals.format(evt.createdAt, 'dd MMM HH:mm')}"></td>
+                            <td class="text-sm" th:text="${evt.provider}"></td>
+                            <td class="text-xs font-mono" th:text="${evt.model}"></td>
+                            <td class="text-xs text-base-content/60" th:text="${evt.feature ?: '—'}"></td>
+                            <td class="text-right font-mono tabular-nums text-xs" th:text="${evt.promptTokens}"></td>
+                            <td class="text-right font-mono tabular-nums text-xs" th:text="${evt.completionTokens}"></td>
+                            <td class="text-right font-mono tabular-nums text-xs">
+                                $<span th:text="${#numbers.formatDecimal(evt.costUsd, 1, 6)}"></span>
+                            </td>
+                        </tr>
+                        <tr th:if="${#lists.isEmpty(user.recentLlmEvents)}">
+                            <td colspan="7" class="text-center py-8 text-base-content/40">No LLM usage recorded</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Danger Zone tab -->
+        <div x-show="tab === 'danger'" x-cloak
+             class="bg-base-100 border border-error/30 rounded-xl p-6">
+            <h3 class="text-base font-semibold text-error mb-2" th:text="#{admin.tab.danger}">Danger Zone</h3>
+            <p class="text-sm text-base-content/60 mb-4">
+                Anonymizing a user replaces their email with a placeholder and clears personal data.
+                This action cannot be undone.
+            </p>
+            <form th:action="@{/admin/users/{id}/anonymize(id=${user.id})}" method="post"
+                  onsubmit="return confirm('Anonymize this user? This cannot be undone.')">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <button type="submit" class="btn btn-error btn-sm"
+                        th:text="#{admin.action.anonymize}">Anonymize User</button>
+            </form>
+        </div>
+
+    </div>
+
+</div>
+</body>
+</html>

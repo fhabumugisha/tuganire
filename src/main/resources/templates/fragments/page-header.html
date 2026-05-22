@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<!--
+    Page Header Fragments - Standardized Headers
+    Usage:
+    - Standard: <th:block th:replace="~{fragments/page-header :: standard(#{page.title}, #{page.subtitle})}"/>
+    - With Gradient Name: <th:block th:replace="~{fragments/page-header :: withGradientName(#{greeting}, ${userName}, #{subtitle})}"/>
+    - Section Header: <th:block th:replace="~{fragments/page-header :: section(#{section.title}, #{action.text}, @{/action/url})}"/>
+-->
+<body>
+    <!-- Standard Page Header -->
+    <div th:fragment="standard(title, subtitle)">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-base-content tracking-tight mb-4"
+                th:text="${title}">Page Title</h1>
+            <p th:if="${subtitle != null}"
+               class="text-base text-base-content/60 max-w-2xl mx-auto"
+               th:text="${subtitle}">Subtitle</p>
+        </div>
+    </div>
+
+    <!-- Page Header with Gradient Name (for Dashboard-style welcome) -->
+    <div th:fragment="withGradientName(greeting, name, subtitle)">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-base-content tracking-tight mb-3">
+                <span th:text="${greeting}">Welcome</span>,
+                <span class="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent"
+                      th:text="${name}">User</span>!
+            </h1>
+            <p th:if="${subtitle != null}"
+               class="text-base-content/60 text-base"
+               th:text="${subtitle}">Subtitle</p>
+        </div>
+    </div>
+
+    <!-- Section Header with Gradient Accent Line -->
+    <div th:fragment="section(title, actionText, actionHref)">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold text-base-content flex items-center gap-3">
+                <div class="w-1 h-6 bg-gradient-to-b from-primary to-secondary rounded-full"></div>
+                <span th:text="${title}">Section Title</span>
+            </h2>
+            <a th:if="${actionText != null && actionHref != null}"
+               th:href="${actionHref}"
+               class="text-sm text-primary hover:text-primary-focus font-semibold inline-flex items-center gap-1.5 hover:gap-2 transition-all">
+                <span th:text="${actionText}">Action</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </a>
+        </div>
+    </div>
+</body>
+</html>
