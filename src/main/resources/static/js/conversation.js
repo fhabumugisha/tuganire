@@ -58,13 +58,15 @@ function conversation() {
         _mediaStream: null,
         _audioChunks: [],
 
-        /** Accumulated final transcript segments, persisted across keep-alive restarts. */
-        _finalTranscript: '',
+        /** Finals committed from earlier keep-alive sessions (preserved across restarts). */
+        _committedTranscript: '',
+        /** Finals rebuilt from the CURRENT session's results on each onresult (idempotent — no dup). */
+        _sessionFinal: '',
         /** Latest interim (not-yet-final) transcript text. */
         _interimTranscript: '',
         /** True when the user pressed stop or playback paused us — suppresses keep-alive restart. */
         _manualStop: false,
-        /** Live transcript (final + interim) shown while recording. */
+        /** Live transcript shown while recording. */
         liveTranscript: '',
 
         // ── lifecycle ──────────────────────────────────────────────────────
@@ -210,11 +212,12 @@ function conversation() {
             recognition.maxAlternatives = 1;
             recognition.continuous      = true;   // keep listening through pauses until the user stops
 
-            // Reset the per-session transcript buffers.
-            this._finalTranscript   = '';
-            this._interimTranscript = '';
-            this.liveTranscript     = '';
-            this._manualStop        = false;
+            // Reset the transcript buffers (once per press; NOT reset on keep-alive restart).
+            this._committedTranscript = '';
+            this._sessionFinal        = '';
+            this._interimTranscript   = '';
+            this.liveTranscript       = '';
+            this._manualStop          = false;
 
             recognition.onstart = () => {
                 this.recording  = true;
@@ -222,20 +225,24 @@ function conversation() {
             };
 
             recognition.onresult = (event) => {
-                // Append newly finalised segments to our own buffer (it survives keep-alive
-                // restarts), and track the latest interim text for the live display.
-                // Submission is deferred to _stopRecognition (the user's second press).
+                // Rebuild the CURRENT session's text from the full results list on each event
+                // (idempotent — avoids the snowball duplication when resultIndex doesn't advance
+                // on mobile Chrome in continuous mode). Text from earlier keep-alive sessions is
+                // kept in _committedTranscript. Submission is deferred to _stopRecognition.
+                let sessionFinal = '';
                 let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
+                for (let i = 0; i < event.results.length; i++) {
                     const res = event.results[i];
                     if (res.isFinal) {
-                        this._finalTranscript = (this._finalTranscript + ' ' + res[0].transcript).trim();
+                        sessionFinal += res[0].transcript + ' ';
                     } else {
                         interim += res[0].transcript;
                     }
                 }
+                this._sessionFinal = sessionFinal.trim();
                 this._interimTranscript = interim.trim();
-                this.liveTranscript = (this._finalTranscript + ' ' + this._interimTranscript).trim();
+                this.liveTranscript = [this._committedTranscript, this._sessionFinal, this._interimTranscript]
+                    .filter(Boolean).join(' ').trim();
             };
 
             recognition.onerror = (event) => {
@@ -250,8 +257,13 @@ function conversation() {
 
             recognition.onend = () => {
                 // The browser ends recognition on its own after a silence even when
-                // continuous=true. If the user hasn't pressed stop, restart to keep listening.
+                // continuous=true. If the user hasn't pressed stop, commit this session's finals
+                // (the next session starts with a fresh, empty results list) and restart.
                 if (!this._manualStop && this._recognition) {
+                    this._committedTranscript = [this._committedTranscript, this._sessionFinal]
+                        .filter(Boolean).join(' ').trim();
+                    this._sessionFinal = '';
+                    this._interimTranscript = '';
                     try {
                         this._recognition.start();
                         return;
@@ -270,7 +282,8 @@ function conversation() {
         _stopRecognition() {
             // Capture language + transcript BEFORE clearing state.
             const lang = this.activeLang;
-            const transcript = (this._finalTranscript + ' ' + this._interimTranscript).trim();
+            const transcript = [this._committedTranscript, this._sessionFinal, this._interimTranscript]
+                .filter(Boolean).join(' ').trim();
 
             this._manualStop = true;   // prevent onend keep-alive from restarting
             if (this._recognition) {
@@ -279,9 +292,10 @@ function conversation() {
             this.recording    = false;
             this.activeLang   = null;
             this._recognition = null;
-            this._finalTranscript   = '';
-            this._interimTranscript = '';
-            this.liveTranscript     = '';
+            this._committedTranscript = '';
+            this._sessionFinal        = '';
+            this._interimTranscript   = '';
+            this.liveTranscript       = '';
 
             if (transcript && lang) {
                 this._submitTranscript(transcript, lang);
@@ -297,9 +311,10 @@ function conversation() {
             this.recording    = false;
             this.activeLang   = null;
             this._recognition = null;
-            this._finalTranscript   = '';
-            this._interimTranscript = '';
-            this.liveTranscript     = '';
+            this._committedTranscript = '';
+            this._sessionFinal        = '';
+            this._interimTranscript   = '';
+            this.liveTranscript       = '';
         },
 
         /** Called before audio playback to prevent the mic from picking up speaker output. */
