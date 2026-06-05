@@ -144,7 +144,7 @@ class TranslationServiceImpl implements TranslationService {
 
         // Step 4 — Kinyarwanda post-processing
         ProcessedTranslation processed = timed(STAGE_POSTPROCESS,
-                () -> postProcessor.process(llmResult.text(), src, tgt));
+                () -> postProcessor.process(llmResult.text(), sourceText, src, tgt));
         log.debug("Post-processor applied {} correction(s)", processed.appliedCorrections().size());
 
         // Step 5 — build response, cache, return

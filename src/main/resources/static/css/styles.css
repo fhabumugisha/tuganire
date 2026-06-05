@@ -3702,6 +3702,11 @@
       scale: 0.97;
     }
   }
+  .sm\:inline {
+    @media (width >= 40rem) {
+      display: inline;
+    }
+  }
   .sm\:max-w-\[70\%\] {
     @media (width >= 40rem) {
       max-width: 70%;

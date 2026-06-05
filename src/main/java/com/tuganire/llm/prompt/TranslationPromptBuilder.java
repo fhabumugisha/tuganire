@@ -18,9 +18,13 @@ public class TranslationPromptBuilder {
     // 10 linguistic rules (PRD section 6)
     // -------------------------------------------------------------------------
 
-    static final String RULE_PLURAL_RESPECT = "1. PLURIEL DE RESPECT (obligatoire): Toujours utiliser le pluriel de respect pour s'adresser "
-            + "à un inconnu en kinyarwanda. Utiliser 'mwe' au lieu de 'we', 'muraho' au lieu de 'uraho', "
-            + "'mwamfasha' → 'mwangafasha', 'ndakwinginze' → 'ndabinginze', 'mbwira' → 'mwambwira'.";
+    static final String RULE_PLURAL_RESPECT = "1. REGISTRE TU/VOUS (préserver le registre du français): "
+            + "Si le français VOUVOIE (« vous », « votre/vos », ou interlocuteur inconnu sans marqueur), utiliser le "
+            + "PLURIEL DE RESPECT en kinyarwanda (préfixe 'mu-' : 'muraho', 'mumeze neza', 'mwambwira'). "
+            + "Si le français TUTOIE (« tu », « toi », « te », « ton/ta/tes »), utiliser le SINGULIER "
+            + "(préfixe 'u-' : 'uraho', 'umeze neza', 'wambwira'). "
+            + "Par défaut, sans marqueur clair (inconnu), utiliser le pluriel de respect. "
+            + "Exemple: « tu vas bien » → 'umeze neza' (singulier) ; « vous allez bien » → 'mumeze neza' (pluriel).";
 
     static final String RULE_NO_POLITENESS_STACKING = "2. PAS D'EMPILEMENT DE POLITESSE: Ne jamais combiner plusieurs formules de politesse "
             + "('Mwambabarira ndabinginze' est redondant — utiliser uniquement 'Ndabinginze'). "
@@ -92,6 +96,13 @@ public class TranslationPromptBuilder {
     static final String EXAMPLE_10 = "FR: \"Je voudrais une chambre pour deux nuits\" → "
             + "RW: \"Ndashaka icumbi kir'ijoro ibiri\"";
 
+    // tu/vous register (singular vs plural of respect)
+    static final String EXAMPLE_11 = "FR: \"J'espère que tu vas bien\" → RW: \"Nizere ko umeze neza\""
+            + "  (TUTOIEMENT → singulier 'u-')";
+
+    static final String EXAMPLE_12 = "FR: \"J'espère que vous allez bien\" → RW: \"Nizere ko mumeze neza\""
+            + "  (VOUVOIEMENT → pluriel de respect 'mu-')";
+
     // -------------------------------------------------------------------------
     // Prompt construction
     // -------------------------------------------------------------------------
@@ -116,7 +127,7 @@ public class TranslationPromptBuilder {
 
                         """ + EXAMPLE_01 + "\n" + EXAMPLE_02 + "\n" + EXAMPLE_03 + "\n" + EXAMPLE_04 + "\n" + EXAMPLE_05
                 + "\n" + EXAMPLE_06 + "\n" + EXAMPLE_07 + "\n" + EXAMPLE_08 + "\n" + EXAMPLE_09 + "\n" + EXAMPLE_10
-                + "\n" + """
+                + "\n" + EXAMPLE_11 + "\n" + EXAMPLE_12 + "\n" + """
 
                         INSTRUCTIONS DE FORMAT:
                         - Retourne UNIQUEMENT la traduction, sans explication ni commentaire.

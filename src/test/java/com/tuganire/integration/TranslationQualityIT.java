@@ -67,7 +67,8 @@ class TranslationQualityIT extends AbstractIntegrationTest {
         int correct = 0;
         List<String> failures = new ArrayList<>();
         for (CorpusEntry entry : corpus) {
-            String processed = postProcessor.process(entry.llmRawOutput(), FR, RW).text();
+            // null source → register detection off, all rules apply (this corpus tests RW output quality).
+            String processed = postProcessor.process(entry.llmRawOutput(), null, FR, RW).text();
             if (matchesNativeCorrection(processed, entry.nativeCorrection())) {
                 correct++;
             } else {

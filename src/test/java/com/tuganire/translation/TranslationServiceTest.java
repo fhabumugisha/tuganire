@@ -120,7 +120,7 @@ class TranslationServiceTest {
         when(llmFactory.get("openai")).thenReturn(primaryProvider);
         when(primaryProvider.name()).thenReturn("openai");
         when(primaryProvider.translate(SOURCE, FR, RW, PRIMARY_MODEL)).thenReturn("raw-rw");
-        when(postProcessor.process("raw-rw", FR, RW))
+        when(postProcessor.process("raw-rw", SOURCE, FR, RW))
                 .thenReturn(new ProcessedTranslation(TRANSLATED, List.of("PLURAL_RESPECT")));
 
         // When
@@ -132,7 +132,7 @@ class TranslationServiceTest {
         assertThat(result.translatedText()).isEqualTo(TRANSLATED);
         assertThat(result.appliedCorrections()).contains("PLURAL_RESPECT");
         verify(primaryProvider).translate(SOURCE, FR, RW, PRIMARY_MODEL);
-        verify(postProcessor).process("raw-rw", FR, RW);
+        verify(postProcessor).process("raw-rw", SOURCE, FR, RW);
         verify(cache).put(eq(SOURCE), eq(FR), eq(RW), any());
     }
 
@@ -155,7 +155,8 @@ class TranslationServiceTest {
         when(primaryProvider.translate(SOURCE, FR, RW, PRIMARY_MODEL))
                 .thenThrow(new RuntimeException("OpenAI timeout", new java.io.IOException("connect timed out")));
         when(fallbackProvider.translate(SOURCE, FR, RW, FALLBACK_MODEL)).thenReturn("fallback-rw");
-        when(postProcessor.process("fallback-rw", FR, RW)).thenReturn(new ProcessedTranslation(TRANSLATED, List.of()));
+        when(postProcessor.process("fallback-rw", SOURCE, FR, RW))
+                .thenReturn(new ProcessedTranslation(TRANSLATED, List.of()));
 
         // When
         TranslationResponse result = service.translate(SOURCE, FR, RW);

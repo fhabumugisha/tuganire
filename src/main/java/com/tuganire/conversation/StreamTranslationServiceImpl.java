@@ -226,7 +226,7 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
 
         String raw = accumulated.toString().trim();
         if (LANG_RW.equalsIgnoreCase(targetLang)) {
-            return postProcessor.process(raw, srcLocale, tgtLocale).text();
+            return postProcessor.process(raw, correctedSource, srcLocale, tgtLocale).text();
         }
         return raw;
     }
