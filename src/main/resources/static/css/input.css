@@ -364,6 +364,43 @@ html {
 .listening-ring-3 { animation-delay: 800ms;  opacity: 0.25; }
 
 /* ========================================
+   Translation progress bar (indeterminate)
+   A slim indigo→amber sliver sweeps across a
+   faint track while a translation streams in.
+   ======================================== */
+.translate-progress {
+    position: relative;
+    height: 3px;
+    overflow: hidden;
+    background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+}
+
+.translate-progress::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+    animation: translate-progress-slide 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes translate-progress-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+/* Reduced motion: no sweep, just a static visible fill. */
+@media (prefers-reduced-motion: reduce) {
+    .translate-progress::before {
+        animation: none;
+        width: 100%;
+    }
+}
+
+/* ========================================
    Conversation bubble utilities
    ======================================== */
 .bubble-fr {

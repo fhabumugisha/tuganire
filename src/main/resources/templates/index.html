@@ -17,14 +17,39 @@
         networkError:   /*[[#{error.network}]]*/        'Erreur réseau. Vérifiez votre connexion.',
         httpsRequired:  /*[[#{notice.speechApiUnsupported}]]*/ 'HTTPS requis en production.',
         compareTitle:   /*[[#{compare.title}]]*/   'Quelle transcription est la meilleure ?',
-        compareChoose:  /*[[#{compare.choose}]]*/  'Choisir'
+        compareChoose:  /*[[#{compare.choose}]]*/  'Choisir',
+        translateFailed:/*[[#{error.translateFailed}]]*/ 'Échec de la traduction. Veuillez réessayer.',
+        // Bubble labels + actions rebuilt client-side for the streaming path
+        replay:         /*[[#{action.replay}]]*/   'Rejouer',
+        thumbsUp:       /*[[#{action.thumbsUp}]]*/  'Bon',
+        thumbsDown:     /*[[#{action.thumbsDown}]]*/ 'Mauvais',
+        feedbackThanks: /*[[#{feedback.thanks}]]*/  'Merci pour votre retour !',
+        langNameFr:     /*[[#{lang.code.fr}]]*/     'Français',
+        langNameRw:     /*[[#{lang.code.rw}]]*/     'Ikinyarwanda',
+        // {0} placeholder for the bubble ARIA labels — JS substitutes the language name
+        ariaBubbleSource: /*[[#{aria.bubble.source('{0}')}]]*/ 'Texte source en {0}',
+        ariaBubbleTarget: /*[[#{aria.bubble.target('{0}')}]]*/ 'Traduction en {0}'
     };
 </script>
 
 <div layout:fragment="content"
      x-data="conversation()"
      x-init="init()"
-     class="flex flex-col min-h-[calc(100dvh-3.5rem)]">
+     class="relative flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <!--
+        Translation progress bar.
+        Slim indeterminate bar pinned just under the sticky header, shown from the moment a
+        translation starts (STT upload or SSE stream open) until the stream finishes or errors.
+        Driven by Alpine `processing`. Animation is disabled under prefers-reduced-motion (CSS),
+        leaving a static visible fill so the state is still perceivable. Spans both modes.
+    -->
+    <div x-show="processing"
+         x-cloak
+         class="sticky top-14 z-20 translate-progress"
+         role="progressbar"
+         th:aria-label="#{progress.translating}"
+         th:attr="aria-valuetext=#{progress.translating}"></div>
 
     <!--
         HTTPS / browser compatibility notice.
@@ -215,18 +240,23 @@
                 </form>
             </div>
 
-            <!-- Two main voice buttons + mode toggle -->
-            <div class="flex gap-3 px-4 pb-4 pt-2 max-w-2xl mx-auto w-full">
+            <!--
+                Two main voice buttons + mode toggle.
+                The toggle is `shrink-0` and the two voice buttons are `flex-1 min-w-0`
+                so on narrow viewports the labels truncate INSTEAD of pushing the toggle
+                off-screen (fixes the orphaned/clipped floating toggle at the right edge).
+            -->
+            <div class="flex items-stretch gap-2 px-3 sm:px-4 pb-4 pt-2 max-w-2xl mx-auto w-full">
 
                 <!-- Parler français (FR → RW) -->
                 <button type="button"
-                        class="flex-1 btn btn-primary h-16 gap-2 text-base font-semibold
-                               shadow-sm transition-all duration-150
+                        class="flex-1 min-w-0 btn btn-primary min-h-14 h-14 gap-2 text-base font-semibold
+                               transition-all duration-150
                                focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
                                active:scale-[0.97]"
                         :class="recording && activeLang === 'fr'
                                  ? 'ring-4 ring-primary/30 scale-[0.98]'
-                                 : 'hover:shadow-md hover:-translate-y-0.5'"
+                                 : 'hover:-translate-y-0.5'"
                         :disabled="recording && activeLang !== 'fr'"
                         @click="toggleRecognition('fr')"
                         :aria-label="recording && activeLang === 'fr'
@@ -238,17 +268,18 @@
                         <path stroke-linecap="round" stroke-linejoin="round"
                               d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/>
                     </svg>
-                    <span th:text="#{button.speakFrench}">Parler français</span>
+                    <span class="truncate" th:text="#{button.speakFrench}">Parler français</span>
                 </button>
 
-                <!-- Mode toggle (between the two buttons) -->
+                <!-- Mode toggle (cleanly placed BETWEEN the two buttons; never clipped) -->
                 <button type="button"
-                        class="btn btn-ghost btn-sm btn-circle self-center text-base-content/40
-                               hover:text-primary hover:bg-primary/10 transition-colors duration-150"
+                        class="shrink-0 btn btn-ghost btn-circle min-h-11 w-11 self-center text-base-content/50
+                               hover:text-primary hover:bg-primary/10 transition-colors duration-150
+                               focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                         @click="toggleMode()"
                         th:aria-label="#{aria.modeToggle}"
                         :title="mode === 'twoButtons' ? /*[[#{mode.splitScreen}]]*/ 'Écran partagé' : /*[[#{mode.twoButtons}]]*/ 'Deux boutons'">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none"
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
                          viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round"
                               d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875v14.25c0 .621.504 1.125 1.125 1.125z"/>
@@ -257,13 +288,13 @@
 
                 <!-- Kuvuga ikinyarwanda (RW → FR) -->
                 <button type="button"
-                        class="flex-1 btn btn-accent h-16 gap-2 text-base font-semibold text-white
-                               shadow-sm transition-all duration-150
+                        class="flex-1 min-w-0 btn btn-accent min-h-14 h-14 gap-2 text-base font-semibold text-white
+                               transition-all duration-150
                                focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2
                                active:scale-[0.97]"
                         :class="recording && activeLang === 'rw'
                                  ? 'ring-4 ring-accent/30 scale-[0.98]'
-                                 : 'hover:shadow-md hover:-translate-y-0.5'"
+                                 : 'hover:-translate-y-0.5'"
                         :disabled="recording && activeLang !== 'rw'"
                         @click="toggleRecognition('rw')"
                         :aria-label="recording && activeLang === 'rw'
@@ -275,7 +306,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round"
                               d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/>
                     </svg>
-                    <span th:text="#{button.speakKinyarwanda}">Kuvuga ikinyarwanda</span>
+                    <span class="truncate" th:text="#{button.speakKinyarwanda}">Kuvuga ikinyarwanda</span>
                 </button>
             </div>
         </div>
@@ -361,8 +392,9 @@
              role="separator">
             <div class="flex-1 split-divider-line"></div>
             <button type="button"
-                    class="btn btn-xs btn-ghost gap-1 text-base-content/50
+                    class="btn btn-sm btn-ghost min-h-9 gap-1 text-base-content/60
                            hover:text-primary hover:bg-primary/10 transition-colors duration-150
+                           focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2
                            border border-base-300 rounded-full px-3"
                     @click="toggleMode()"
                     th:aria-label="#{aria.modeToggle}">
