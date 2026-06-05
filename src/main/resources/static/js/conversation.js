@@ -847,6 +847,7 @@ function conversation() {
                 targetBubble: tgtBubble,
                 actionRow,
                 translationId,
+                sourceLang,
                 targetLang,
                 _controlsBuilt: false,
             };
@@ -896,6 +897,69 @@ function conversation() {
                 audio.play().catch(() => { /* ignored */ });
             });
             refs.actionRow.appendChild(replayBtn);
+
+            // Play-original button — plays the SOURCE-language audio (corrected source text).
+            const playSourceLabel = msgs.playSource || 'Écouter l\'original';
+            const sourceBtn = document.createElement('button');
+            sourceBtn.type = 'button';
+            sourceBtn.setAttribute('aria-label', playSourceLabel);
+            sourceBtn.className = 'btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-accent transition-colors duration-150';
+            sourceBtn.innerHTML =
+                `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                + `<path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/></svg>`
+                + `<span class="text-xs"></span>`;
+            sourceBtn.lastElementChild.textContent = playSourceLabel;
+
+            // Hidden <audio> for the source text, mirroring how _attachAudio builds the target audio.
+            const sourceAudio = document.createElement('audio');
+            sourceAudio.id = `audio-src-${refs.translationId}`;
+            sourceAudio.preload = 'none';
+            sourceAudio.className = 'sr-only';
+            sourceAudio.setAttribute('aria-label', playSourceLabel);
+            refs.targetBubble.insertBefore(sourceAudio, refs.actionRow);
+
+            sourceBtn.addEventListener('click', () => {
+                // Read the (final) source text at click time so it always matches the rendered bubble.
+                const sourceText = (refs.sourceText.textContent || '').trim();
+                if (!sourceText) return;
+                sourceAudio.src = `/api/v1/audio/speak.mp3?lang=${encodeURIComponent(refs.sourceLang)}`
+                    + `&text=${encodeURIComponent(sourceText)}`;
+                this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
+                sourceAudio.currentTime = 0;
+                sourceAudio.play().catch(() => { /* autoplay may be blocked */ });
+            });
+            refs.actionRow.appendChild(sourceBtn);
+
+            // Copy button — copies the current TARGET text to the clipboard.
+            const copyLabel = msgs.copy || 'Copier';
+            const copiedLabel = msgs.copied || 'Copié';
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.setAttribute('aria-label', copyLabel);
+            copyBtn.className = 'btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-accent transition-colors duration-150';
+            copyBtn.innerHTML =
+                `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                + `<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"/></svg>`
+                + `<span class="text-xs"></span>`;
+            copyBtn.lastElementChild.textContent = copyLabel;
+
+            let copyResetTimer = null;
+            copyBtn.addEventListener('click', () => {
+                // Capture whatever is currently displayed in the target text node (it may have
+                // been finalised on translation-done).
+                const targetText = (refs.targetText.textContent || '').trim();
+                if (!targetText || !navigator.clipboard) return;
+                navigator.clipboard.writeText(targetText).then(() => {
+                    copyBtn.lastElementChild.textContent = copiedLabel;
+                    copyBtn.setAttribute('aria-label', copiedLabel);
+                    if (copyResetTimer) clearTimeout(copyResetTimer);
+                    copyResetTimer = setTimeout(() => {
+                        copyBtn.lastElementChild.textContent = copyLabel;
+                        copyBtn.setAttribute('aria-label', copyLabel);
+                    }, 1500);
+                }).catch(() => { /* clipboard may be unavailable */ });
+            });
+            refs.actionRow.appendChild(copyBtn);
 
             // Feedback (👍 / 👎) — posts form-encoded to /feedback with CSRF + sessionId,
             // mirroring fragments/feedback.html. On success the group is replaced by a thanks note.
