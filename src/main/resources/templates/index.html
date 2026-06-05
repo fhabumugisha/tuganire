@@ -363,12 +363,10 @@
             <!-- RW speak button -->
             <div class="px-4 pb-4 pt-1">
                 <button type="button"
-                        class="w-full btn btn-accent h-14 gap-2 text-base font-semibold text-white
-                               shadow-sm transition-all duration-150 active:scale-[0.97]
+                        class="w-full btn btn-accent min-h-14 h-14 gap-2 text-base font-semibold text-white
+                               transition-all duration-150 active:scale-[0.97]
                                focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-                        :class="recording && activeLang === 'rw'
-                                 ? 'ring-4 ring-accent/30 scale-[0.98]'
-                                 : 'hover:shadow-md'"
+                        :class="recording && activeLang === 'rw' ? 'ring-4 ring-accent/30 scale-[0.98]' : ''"
                         :disabled="recording && activeLang !== 'rw'"
                         @click="toggleRecognition('rw', 'split-transcript-rw')"
                         :aria-label="recording && activeLang === 'rw'
@@ -405,6 +403,14 @@
             </button>
             <div class="flex-1 split-divider-line"></div>
         </div>
+
+        <!-- Translation progress bar (split mode): centred on the divider so it covers no text -->
+        <div x-show="processing"
+             x-cloak
+             class="flex-shrink-0 translate-progress"
+             role="progressbar"
+             th:aria-label="#{progress.translating}"
+             th:attr="aria-valuetext=#{progress.translating}"></div>
 
         <!-- ── BOTTOM: Doctor panel (FR) — normal orientation ───────────────── -->
         <div class="flex-1 flex flex-col relative overflow-hidden split-panel-fr">
@@ -465,15 +471,13 @@
                 <span class="sr-only" th:text="#{status.listening}">Écoute...</span>
             </div>
 
-            <!-- FR speak button -->
-            <div class="px-4 pb-4 pt-1">
+            <!-- FR speak button (bottom of screen → clear the iOS home indicator) -->
+            <div class="px-4 pt-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                 <button type="button"
-                        class="w-full btn btn-primary h-14 gap-2 text-base font-semibold
-                               shadow-sm transition-all duration-150 active:scale-[0.97]
+                        class="w-full btn btn-primary min-h-14 h-14 gap-2 text-base font-semibold
+                               transition-all duration-150 active:scale-[0.97]
                                focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                        :class="recording && activeLang === 'fr'
-                                 ? 'ring-4 ring-primary/30 scale-[0.98]'
-                                 : 'hover:shadow-md'"
+                        :class="recording && activeLang === 'fr' ? 'ring-4 ring-primary/30 scale-[0.98]' : ''"
                         :disabled="recording && activeLang !== 'fr'"
                         @click="toggleRecognition('fr', 'split-transcript-fr')"
                         :aria-label="recording && activeLang === 'fr'
