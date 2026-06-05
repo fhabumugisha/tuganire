@@ -1,0 +1,58 @@
+TASK 13 — TTS Providers (MMS, OpenAI, ElevenLabs) and TTS Service
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): providers implement the TtsProvider interface (Task 07); service interface + *Impl; Lombok; constants for provider names. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 4 (TtsProvider impls + TtsProviderFactory + TtsConfig, and the @HttpExchange MmsTtsClient for the Python server) and section 8 (tts/ package). The TtsProvider interface and TtsConfig record already exist (Task 07). The Python MMS-TTS server (Task 02) exposes POST /tts and GET /health at MMS_TTS_URL (tuganire.mms.base-url). Per-language routing: tuganire.tts.kiny-provider=mms, french-provider=openai (ADR-006: MMS for Kinyarwanda).
+
+TECH STACK AND BEST PRACTICES
+
+Spring Boot 4 typed HTTP client: define MmsTtsClient as an @HttpExchange interface and register it via @ImportHttpServices (Spring Framework 7 / Boot 4 declarative client) bound to tuganire.mms.base-url — do NOT hand-wire RestTemplate. OpenAI TTS via Spring AI 2.0: inject the TextToSpeechModel (OpenAiAudioSpeechModel), build OpenAiAudioSpeechOptions (model gpt-4o-mini-tts, a voice, response format MP3) and call speechModel.call(new TextToSpeechPrompt(text, options)).getResult().getOutput() returning byte[]. ElevenLabs: optional, behind its API key; may be a thin stub that throws if no key. Keep Spring AI imports confined to OpenAiTtsProvider (ADR-008). No synchronized blocks (virtual threads).
+
+CONTEXT
+
+TTS produces the audio Mukamana hears (Kinyarwanda via MMS — already native-validated, PRD audio section) and the audio Marc hears in the RW→FR direction. Runtime-switchable providers support the settings comparator (US-09) and the A/B goal (ADR-004). Feeds the conversation pipeline (Task 17) and the providers endpoint (Task 18).
+
+DEPENDENCIES
+
+Requires Task 07 (TtsProvider, TtsConfig). The contract it calls is defined by Task 02 (MMS server) but does not need it running to compile.
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 10, 11, 12, 14, 15 — owns com.tuganire.tts exclusively.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/tts/MmsTtsClient.java
+Purpose: @HttpExchange typed client: @PostExchange("/tts") byte[] synthesize(@RequestBody MmsTtsRequest req); @GetExchange("/health") MmsHealthResponse health();. Include records MmsTtsRequest(String text, String lang) and MmsHealthResponse(String status, String device, List<String> languages) (or place these records in this file). Register the client (@ImportHttpServices on a config class) bound to tuganire.mms.base-url.
+
+File: src/main/java/com/tuganire/tts/MmsTtsProvider.java
+Purpose: @Component implementing TtsProvider, name()="mms", supportsLanguage in {"rw","fr"}; synthesize delegates to MmsTtsClient.synthesize(new MmsTtsRequest(text, lang)).
+
+File: src/main/java/com/tuganire/tts/OpenAiTtsProvider.java
+Purpose: @Component implementing TtsProvider, name()="openai", supportsLanguage true; synthesize via Spring AI TextToSpeechModel (gpt-4o-mini-tts, MP3).
+
+File: src/main/java/com/tuganire/tts/ElevenLabsTtsProvider.java
+Purpose: @Component implementing TtsProvider, name()="elevenlabs"; supportsLanguage true; synthesize calls ElevenLabs if ELEVENLABS_API_KEY is set, otherwise throws an UnsupportedOperationException (Phase 2 premium, PRD).
+
+File: src/main/java/com/tuganire/tts/TtsProviderFactory.java
+Purpose: @Service collecting List<TtsProvider> into Map<String,TtsProvider> by name(); get(String name) (throws IllegalArgumentException if unknown); forLanguage(String langCode) returning the configured kiny-provider for "rw" and french-provider for "fr" (from TtsConfig).
+
+File: src/main/java/com/tuganire/tts/TtsService.java and TtsServiceImpl.java
+Purpose: interface byte[] synthesize(String text, Locale language) (+ optional provider override); Impl picks the provider via TtsProviderFactory.forLanguage and increments a Micrometer counter tuganire.providers.usage{type="tts",name=...}.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. MmsTtsClient is a declarative @HttpExchange interface registered via @ImportHttpServices bound to tuganire.mms.base-url (no manual RestTemplate).
+3. The three providers implement TtsProvider with distinct name() values mms / openai / elevenlabs.
+4. TtsProviderFactory.forLanguage("rw") returns the provider named by tuganire.tts.kiny-provider (mms) and forLanguage("fr") the french-provider; get("unknown") throws IllegalArgumentException.
+5. With the Python server running, MmsTtsProvider.synthesize("muraho","rw") returns non-empty audio bytes (integration-level; covered by Task 22 when infra is up).
+6. Only OpenAiTtsProvider imports org.springframework.ai.* within the tts package.
+
+NOTES
+
+If the installed Spring AI milestone's speech API class names differ from ARCHI's snippet, adapt to the real API — TtsProvider is the stable seam. ElevenLabs is intentionally optional/premium for Phase 2. The conversation pipeline (Task 17) calls TtsService and stores the resulting audio ephemerally (Redis, TTL 5 min) — do not persist audio here.

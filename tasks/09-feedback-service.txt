@@ -1,0 +1,49 @@
+TASK 09 — Feedback Service
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): service interface + *Impl, Lombok (@RequiredArgsConstructor, @Slf4j), DTOs are records, throw typed exceptions (ResourceNotFoundException / BusinessException) not ResponseStatusException. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 2 (FeedbackService in the services layer) and section 11 (feedback metrics tuganire.feedback.total{type=...}). The Feedback entity, FeedbackRepo (Task 05) and FeedbackRequest / FeedbackType (Task 04) already exist. This service persists user 👍/👎 and proposed corrections; the FeedbackController (Task 18) calls it. Place FeedbackService (interface) + FeedbackServiceImpl in com.tuganire.feedback.
+
+TECH STACK AND BEST PRACTICES
+
+Spring @Service, constructor injection via Lombok @RequiredArgsConstructor. Map FeedbackRequest to the Feedback entity and save via FeedbackRepo. Increment a Micrometer counter tuganire.feedback.total{type=...} (use io.micrometer.core.instrument.MeterRegistry). Java 21; no synchronized blocks (virtual threads). Validate input: a CORRECTION_PROPOSED with blank suggestedCorrection is a BusinessException.
+
+CONTEXT
+
+The feedback loop is a core differentiator (PRD vision, US-06, ADR-005 — corrections feed continuous improvement; success metric ≥ 100 corrections in month 1). This service is independent of the translation providers and can be built in Wave 3.
+
+DEPENDENCIES
+
+Requires Task 05 (Feedback entity + FeedbackRepo). FeedbackRequest/FeedbackType from Task 04 are also used; both are Wave 2.
+
+PARALLEL GROUP
+
+Group C (Core seams), Wave 3. Runs in parallel with Task 07 (interfaces) and Task 08 (cache) — distinct files within com.tuganire.feedback (entity/repo already created by Task 05; this task adds only the service files).
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/feedback/FeedbackService.java
+Purpose: interface with void submit(FeedbackRequest request); and long countByType(FeedbackType type); (for metrics/admin).
+
+File: src/main/java/com/tuganire/feedback/FeedbackServiceImpl.java
+Purpose: @Service @RequiredArgsConstructor @Slf4j. submit(): validate (THUMBS_UP/DOWN need no correction; CORRECTION_PROPOSED requires non-blank suggestedCorrection else throw BusinessException), build a Feedback entity (sessionId, translationId, type, suggestedCorrection, createdAt = Instant.now()), save via FeedbackRepo, increment MeterRegistry counter "tuganire.feedback.total" tagged type. countByType delegates to FeedbackRepo.countByType.
+
+File (only if missing from Task 01 cleanup): src/main/java/com/tuganire/shared/exception/BusinessException.java
+Purpose: a RuntimeException carrying a message/key, handled by GlobalExceptionHandler. Reuse the existing one if Task 01 kept it; do not create a duplicate.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. submit() with THUMBS_UP persists a Feedback row with type THUMBS_UP and null suggestedCorrection.
+3. submit() with CORRECTION_PROPOSED and a blank suggestedCorrection throws BusinessException and persists nothing.
+4. A Micrometer counter tuganire.feedback.total{type=...} increments on each successful submit (verifiable via MeterRegistry in a unit test or /actuator/metrics).
+5. countByType returns the persisted count for a given FeedbackType.
+6. The service is an interface + @Service Impl pair (no logic in a controller).
+
+NOTES
+
+Do not create the FeedbackController here — it lives in Task 18 with the other REST endpoints. Reuse the existing BusinessException / GlobalExceptionHandler from shared/ if Task 01 preserved them; otherwise create a minimal BusinessException and let Task 18 wire the handler.

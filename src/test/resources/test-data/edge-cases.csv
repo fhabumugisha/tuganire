@@ -1,0 +1,11 @@
+description,llmOutput,targetLanguage,expectedContains,expectedChanged
+empty hallucinated word boundary,iki ni arakool cyane,rw,ni cool,true
+plural respect singular form,Ndakwinginze gufasha,rw,ndabinginze,true
+infix pronoun missing,Amfasha kurya ibiryo,rw,kundya,true
+politeness stacking,Mwambabarira mwampe ndabinginze,rw,ndabinginze,true
+calque construction,Mwampa kugabanyirizwa igiciro,rw,mwangabanyiriza,true
+non-kinyarwanda target unchanged,Ndakwinginze gufasha,fr,Ndakwinginze,false
+clean kinyarwanda no change needed,Muraho neza,rw,Muraho neza,false
+multiple rules stacked in order,ndakwinginze kurya ibiryo,rw,ndabinginze,true
+arasome corrected to asomye,Yego arasome igitabo,rw,asomye,true
+inkuru nzuri corrected,Ngewe ndakunda inkuru nzuri,rw,amakuru meza,true

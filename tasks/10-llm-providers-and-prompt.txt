@@ -1,0 +1,52 @@
+TASK 10 — LLM Providers (OpenAI + Claude fallback) and Translation Prompt
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): provider classes implement the LlmProvider interface (Task 07), Lombok @RequiredArgsConstructor/@Slf4j, constants in a constant/ file rather than inline literals. Every LLM call's prompt must encode the 10 linguistic rules. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 4 ("Bénéfices Spring AI 2.0 utilisés" — OpenAiLlmProvider, structured output, Claude fallback) and the package layout in section 8 (llm/ with OpenAiLlmProvider, ClaudeLlmProvider, LlmProviderFactory, prompt/TranslationPromptBuilder). The LlmProvider interface and StructuredTranslation record already exist (Tasks 07, 04). The factory mirrors TtsProviderFactory (ADR-004): a Map<String, LlmProvider> for runtime selection with a configured default + fallback (tuganire.llm.default-provider=openai, fallback-provider=anthropic).
+
+TECH STACK AND BEST PRACTICES
+
+Spring AI 2.0.0-M6 (newest milestone). OpenAI: inject ChatClient.Builder, build with .defaultSystem(prompt) and .defaultOptions(ChatOptions.builder().temperature(0.3).build()); CRITICAL: temperature is mandatory in Spring AI 2.0 (no default). Override model with .options(ChatOptions.builder().model("gpt-4o").temperature(0.3).build()) since the Spring AI default differs. Structured output: chatClient.prompt().user(...).call().entity(StructuredTranslation.class) — no manual JSON parsing. Claude: Spring AI 2.0 uses the official Anthropic SDK; inject the anthropic ChatModel bean (qualifier anthropicChatModel) and build ChatClient.builder(model); model claude-haiku-4-5-20251001, temperature 0.3. Both starters are on the classpath (Task 01). Jackson 3 (tools.jackson.*) is the serializer — do not import com.fasterxml.jackson.*. Keep all Spring AI types confined to these impl classes (ADR-008).
+
+CONTEXT
+
+This is the raw translation engine (PRD pipeline, ARCHI section 4–5). It returns the LLM's best attempt which the post-processor (Task 12) then corrects — the LLM never decides alone (ARCHI principle 2). The prompt builder injects the 10 rules + few-shot examples that materially improve quality (PRD section 6, validation showed ~6.5/10 raw). The factory enables A/B comparison and the OpenAI→Claude fallback (PRD risk: LLM hallucination / cost). Unblocks TranslationService (Task 16).
+
+DEPENDENCIES
+
+Requires Task 07 (LlmProvider interface, LlmConfig) and Task 04 (StructuredTranslation). Task 01 provides the Spring AI config.
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 11, 12, 13, 14, 15 — all in distinct feature packages.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/llm/prompt/TranslationPromptBuilder.java
+Purpose: Build the system prompt encoding the 10 rules (PRD section 6: plural of respect, no politeness stacking, correct bantu pronominal infixes, natural bantu structures, anti-hallucination invariant loanwords, intact toponyms, natural FR/RW/EN code-switching, spoken numbers/prices, polite non-aggressive negotiation, direct verb over syntactic calque) plus ~10 few-shot FR→RW examples drawn from PRD sections 4/6. Provide buildSystemPrompt() and buildUserPrompt(text, src, tgt). Keep example strings as constants.
+
+File: src/main/java/com/tuganire/llm/OpenAiLlmProvider.java
+Purpose: @Component implementing LlmProvider, name()="openai". Constructor takes ChatClient.Builder + TranslationPromptBuilder; build a ChatClient with the system prompt. translate() calls the model (model gpt-4o, temperature 0.3) and returns content(). translateStructured() uses .entity(StructuredTranslation.class).
+
+File: src/main/java/com/tuganire/llm/ClaudeLlmProvider.java
+Purpose: @Component implementing LlmProvider, name()="anthropic". Inject the anthropic ChatModel (qualifier), build ChatClient.builder(model). Same prompt builder. Used as fallback.
+
+File: src/main/java/com/tuganire/llm/LlmProviderFactory.java
+Purpose: @Service collecting List<LlmProvider> into Map<String,LlmProvider> by name(); get(String name); getDefault() and getFallback() reading LlmConfig. Throw IllegalArgumentException for an unknown provider name.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. OpenAiLlmProvider and ClaudeLlmProvider both implement LlmProvider with distinct name() values "openai" and "anthropic".
+3. Every ChatOptions used sets an explicit temperature (0.3) — no call relies on a default temperature.
+4. LlmProviderFactory.getDefault() returns the provider named by tuganire.llm.default-provider and getFallback() the fallback; get("unknown") throws IllegalArgumentException.
+5. The system prompt text references all 10 linguistic rules and contains at least 8 few-shot examples.
+6. No file outside com.tuganire.llm imports org.springframework.ai.*; no file imports com.fasterxml.jackson.*.
+
+NOTES
+
+If the installed Spring AI milestone's ChatOptions/audio APIs differ slightly from the snippets in ARCHI section 4, adapt to the actual milestone API — the interface (LlmProvider) is the stable contract (ADR-008). Do not call the network in unit tests; Task 22 mocks the ChatClient / uses WireMock. The OpenAI default model may be gpt-5-mini in 2.0 — always override to gpt-4o explicitly as configured.

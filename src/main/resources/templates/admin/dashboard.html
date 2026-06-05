@@ -1,156 +1,259 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
-      layout:decorate="~{admin/layout}">
+      layout:decorate="~{layout/base}">
 <head>
-    <title th:text="#{admin.dashboard.title}">Dashboard Admin</title>
+    <title th:text="#{admin.title}">Administration</title>
 </head>
 <body>
-<div layout:fragment="content">
 
-    <!-- Page header -->
-    <div class="mb-8">
-        <h1 class="text-2xl font-bold text-base-content" th:text="#{admin.dashboard.title}">Dashboard</h1>
-        <p class="text-base-content/60 text-sm mt-1">Vue d'ensemble de votre SaaS</p>
+<div layout:fragment="content"
+     x-data="{ tab: 'feedback' }"
+     class="flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <div class="flex-1 overflow-y-auto px-4 py-6 max-w-4xl mx-auto w-full">
+
+        <!-- Page heading -->
+        <h1 class="text-xl font-semibold text-base-content mb-6" th:text="#{admin.title}">
+            Administration
+        </h1>
+
+        <!-- Section tabs -->
+        <div role="tablist" class="tabs tabs-boxed mb-6 w-fit">
+            <button type="button" role="tab" class="tab"
+                    :class="tab === 'feedback' ? 'tab-active' : ''"
+                    @click="tab = 'feedback'"
+                    th:text="#{admin.tab.feedback}">Retours</button>
+            <button type="button" role="tab" class="tab"
+                    :class="tab === 'golden' ? 'tab-active' : ''"
+                    @click="tab = 'golden'"
+                    th:text="#{admin.tab.golden}">Dictionnaire</button>
+            <button type="button" role="tab" class="tab"
+                    :class="tab === 'usage' ? 'tab-active' : ''"
+                    @click="tab = 'usage'"
+                    th:text="#{admin.tab.usage}">Utilisation IA</button>
+        </div>
+
+        <!-- ── Section 1: Feedback (read-only) ─────────────────────────────── -->
+        <section x-show="tab === 'feedback'" x-cloak>
+
+            <!-- Summary counts -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.feedback.total}">Total</span>
+                        <span class="text-2xl font-semibold" th:text="${feedbackStats.total()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.feedback.thumbsUp}">👍</span>
+                        <span class="text-2xl font-semibold text-success"
+                              th:text="${feedbackStats.thumbsUp()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.feedback.thumbsDown}">👎</span>
+                        <span class="text-2xl font-semibold text-error"
+                              th:text="${feedbackStats.thumbsDown()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.feedback.corrections}">Corrections</span>
+                        <span class="text-2xl font-semibold" th:text="${feedbackStats.corrections()}">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent feedback table -->
+            <div class="card bg-base-100 border border-base-300 shadow-sm">
+                <div class="card-body p-4">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                        th:text="#{admin.feedback.recent}">Retours récents</h2>
+
+                    <div th:if="${#lists.isEmpty(feedbackStats.recent())}"
+                         class="text-center text-base-content/50 text-sm py-8"
+                         th:text="#{admin.feedback.empty}">Aucun retour pour le moment.</div>
+
+                    <div th:unless="${#lists.isEmpty(feedbackStats.recent())}" class="overflow-x-auto">
+                        <table class="table table-sm">
+                            <thead>
+                            <tr>
+                                <th th:text="#{admin.feedback.col.type}">Type</th>
+                                <th th:text="#{admin.feedback.col.translationId}">Traduction</th>
+                                <th th:text="#{admin.feedback.col.session}">Session</th>
+                                <th th:text="#{admin.feedback.col.correction}">Correction</th>
+                                <th th:text="#{admin.feedback.col.date}">Date</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="row : ${feedbackStats.recent()}">
+                                <td>
+                                    <span class="badge badge-sm"
+                                          th:classappend="${row.type().name() == 'THUMBS_UP'} ? 'badge-success'
+                                              : (${row.type().name() == 'THUMBS_DOWN'} ? 'badge-error' : 'badge-warning')"
+                                          th:text="#{'admin.feedback.type.' + ${row.type().name()}}">type</span>
+                                </td>
+                                <td class="text-base-content/60 font-mono text-xs"
+                                    th:text="${row.translationId} ?: '—'">—</td>
+                                <td class="text-base-content/60 font-mono text-xs"
+                                    th:text="${#strings.abbreviate(row.sessionId(), 12)}">sess</td>
+                                <td class="text-base-content/70"
+                                    th:text="${row.suggestedCorrection} ?: '—'">—</td>
+                                <td class="text-base-content/60 text-xs whitespace-nowrap"
+                                    th:text="${#strings.replace(#strings.substring(row.createdAt(), 0, 16), 'T', ' ')}">date</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Section 2: Golden dictionary (CRUD) ─────────────────────────── -->
+        <section x-show="tab === 'golden'" x-cloak>
+
+            <!-- Create form -->
+            <div class="card bg-base-100 border border-base-300 shadow-sm mb-4">
+                <div class="card-body p-4">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                        th:text="#{admin.golden.add}">Ajouter une entrée</h2>
+                    <form class="flex flex-wrap items-end gap-2"
+                          th:attr="hx-post=@{/admin/golden}"
+                          hx-target="#golden-table"
+                          hx-swap="outerHTML"
+                          hx-on:htmx:after-request="if(event.detail.successful) this.reset()">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <input type="text" name="sourceLang" maxlength="2" required value="fr"
+                               class="input input-bordered input-sm w-16"
+                               th:placeholder="#{admin.golden.col.source}"
+                               th:aria-label="#{admin.golden.sourceLang}">
+                        <input type="text" name="sourceText" required
+                               class="input input-bordered input-sm flex-1 min-w-32"
+                               th:placeholder="#{admin.golden.sourceText}"
+                               th:aria-label="#{admin.golden.sourceText}">
+                        <input type="text" name="targetLang" maxlength="2" required value="rw"
+                               class="input input-bordered input-sm w-16"
+                               th:placeholder="#{admin.golden.col.target}"
+                               th:aria-label="#{admin.golden.targetLang}">
+                        <input type="text" name="targetText" required
+                               class="input input-bordered input-sm flex-1 min-w-32"
+                               th:placeholder="#{admin.golden.targetText}"
+                               th:aria-label="#{admin.golden.targetText}">
+                        <input type="text" name="context"
+                               class="input input-bordered input-sm w-32"
+                               th:placeholder="#{admin.golden.col.context}"
+                               th:aria-label="#{admin.golden.col.context}">
+                        <input type="text" name="validatedBy" required value="admin"
+                               class="input input-bordered input-sm w-32"
+                               th:placeholder="#{admin.golden.col.validatedBy}"
+                               th:aria-label="#{admin.golden.col.validatedBy}">
+                        <button type="submit" class="btn btn-primary btn-sm"
+                                th:text="#{admin.action.add}">Ajouter</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Entries table (HTMX-swappable) -->
+            <div class="card bg-base-100 border border-base-300 shadow-sm">
+                <div class="card-body p-4">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                        th:text="#{admin.golden.entries}">Entrées</h2>
+                    <div th:replace="~{admin/fragments/golden :: table}"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Section 3: LLM usage stats ──────────────────────────────────── -->
+        <section x-show="tab === 'usage'" x-cloak>
+
+            <!-- Summary cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.usage.calls}">Appels</span>
+                        <span class="text-2xl font-semibold" th:text="${usageStats.totalCalls()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.usage.tokens}">Tokens</span>
+                        <span class="text-2xl font-semibold" th:text="${usageStats.totalTokens()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.usage.promptTokens}">Tokens entrée</span>
+                        <span class="text-2xl font-semibold"
+                              th:text="${usageStats.totalPromptTokens()}">0</span>
+                    </div>
+                </div>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <span class="text-xs uppercase tracking-wider text-base-content/50"
+                              th:text="#{admin.usage.cost}">Coût estimé</span>
+                        <span class="text-2xl font-semibold"
+                              th:text="'$' + ${#numbers.formatDecimal(usageStats.totalCost(), 1, 4)}">$0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Per-model breakdown -->
+            <div class="card bg-base-100 border border-base-300 shadow-sm">
+                <div class="card-body p-4">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                        th:text="#{admin.usage.byModel}">Détail par modèle</h2>
+
+                    <div th:if="${#lists.isEmpty(usageStats.byModel())}"
+                         class="text-center text-base-content/50 text-sm py-8"
+                         th:text="#{admin.usage.empty}">Aucune donnée d'utilisation pour le moment.</div>
+
+                    <div th:unless="${#lists.isEmpty(usageStats.byModel())}" class="overflow-x-auto">
+                        <table class="table table-sm">
+                            <thead>
+                            <tr>
+                                <th th:text="#{admin.usage.col.provider}">Fournisseur</th>
+                                <th th:text="#{admin.usage.col.model}">Modèle</th>
+                                <th class="text-right" th:text="#{admin.usage.col.calls}">Appels</th>
+                                <th class="text-right" th:text="#{admin.usage.col.tokens}">Tokens</th>
+                                <th class="text-right" th:text="#{admin.usage.col.cost}">Coût</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="m : ${usageStats.byModel()}">
+                                <td th:text="${m.provider()}">openai</td>
+                                <td class="font-mono text-xs" th:text="${m.model()}">gpt-4o</td>
+                                <td class="text-right" th:text="${m.calls()}">0</td>
+                                <td class="text-right" th:text="${m.totalTokens()}">0</td>
+                                <td class="text-right"
+                                    th:text="'$' + ${#numbers.formatDecimal(m.cost(), 1, 4)}">$0</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Back link -->
+        <div class="mt-6 text-center">
+            <a th:href="@{/}"
+               class="text-sm text-base-content/50 hover:text-primary transition-colors duration-150">
+                ← <span th:text="#{app.title}">Tuganire</span>
+            </a>
+        </div>
+
     </div>
-
-    <!-- KPI Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-
-        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.users}">Users</p>
-            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
-               th:text="${dashboard.totalUsers}">0</p>
-            <p class="mt-2 text-sm text-base-content/50">
-                <span class="font-medium text-primary" th:text="${dashboard.premiumUsers}">0</span>
-                <span> premium</span>
-            </p>
-        </div>
-
-        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.premium}">Premium</p>
-            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
-               th:text="${dashboard.premiumUsers}">0</p>
-            <p class="mt-2 text-sm text-base-content/50">
-                <span class="font-medium"
-                      th:text="${dashboard.totalUsers > 0 ? #numbers.formatDecimal(dashboard.premiumUsers * 100.0 / dashboard.totalUsers, 1, 1) + '%' : '0%'}">0%</span>
-                <span> of total</span>
-            </p>
-        </div>
-
-        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.llm.cost.mtd}">LLM Cost MTD</p>
-            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight">
-                <span>$</span><span th:text="${#numbers.formatDecimal(dashboard.llmCostMtd, 1, 4)}">0.0000</span>
-            </p>
-            <p class="mt-2 text-sm text-base-content/50">Month to date</p>
-        </div>
-
-        <div class="bg-base-100 border border-base-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-            <p class="text-xs uppercase tracking-wider text-base-content/60 font-medium" th:text="#{admin.kpi.signups.today}">Signups Today</p>
-            <p class="mt-2 text-4xl font-semibold font-mono tabular-nums tracking-tight"
-               th:text="${dashboard.signupsToday}">0</p>
-            <p class="mt-2 text-sm text-base-content/50">New accounts today</p>
-        </div>
-
-    </div>
-
-    <!-- Charts row -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-
-        <!-- Daily LLM cost line chart -->
-        <div class="lg:col-span-2 bg-base-100 border border-base-200 rounded-xl p-6">
-            <h2 class="text-sm font-semibold text-base-content mb-4" th:text="#{admin.llm.daily.cost}">Daily LLM Cost (30d)</h2>
-            <div id="daily-cost-chart" class="h-72"></div>
-            <script type="application/json" id="daily-cost-data" th:utext="${dashboard.dailyCostJson}">[]</script>
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    var raw = document.getElementById('daily-cost-data').textContent;
-                    var data = JSON.parse(raw);
-                    if (data.length === 0) {
-                        document.getElementById('daily-cost-chart').innerHTML =
-                            '<div class="h-full flex items-center justify-center text-base-content/40 text-sm">Aucune donnée</div>';
-                        return;
-                    }
-                    new ApexCharts(document.getElementById('daily-cost-chart'), {
-                        chart: { type: 'area', height: '100%', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
-                        series: [{ name: 'Cost (USD)', data: data.map(function(d) { return { x: d.date, y: parseFloat(d.cost) }; }) }],
-                        colors: ['#4F46E5'],
-                        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0 } },
-                        stroke: { curve: 'smooth', width: 2 },
-                        dataLabels: { enabled: false },
-                        xaxis: { type: 'datetime' },
-                        yaxis: { labels: { formatter: function(v) { return '$' + v.toFixed(4); } } },
-                        grid: { borderColor: 'rgba(0,0,0,0.06)' },
-                        tooltip: { theme: 'light', x: { format: 'dd MMM yyyy' } }
-                    }).render();
-                });
-            </script>
-        </div>
-
-        <!-- Cost by model donut -->
-        <div class="bg-base-100 border border-base-200 rounded-xl p-6">
-            <h2 class="text-sm font-semibold text-base-content mb-4" th:text="#{admin.llm.by.model}">Cost by Model MTD</h2>
-            <div id="model-donut-chart" class="h-72"></div>
-            <script type="application/json" id="model-donut-data" th:utext="${dashboard.costByModelJson}">[]</script>
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    var raw = document.getElementById('model-donut-data').textContent;
-                    var data = JSON.parse(raw);
-                    if (data.length === 0) {
-                        document.getElementById('model-donut-chart').innerHTML =
-                            '<div class="h-full flex items-center justify-center text-base-content/40 text-sm">Aucune donnée</div>';
-                        return;
-                    }
-                    new ApexCharts(document.getElementById('model-donut-chart'), {
-                        chart: { type: 'donut', height: '100%', fontFamily: 'Inter, sans-serif' },
-                        series: data.map(function(d) { return parseFloat(d.cost); }),
-                        labels: data.map(function(d) { return d.model; }),
-                        colors: ['#4F46E5', '#7C3AED', '#EC4899', '#F59E0B', '#10B981'],
-                        legend: { position: 'bottom', fontSize: '12px' },
-                        dataLabels: { enabled: false },
-                        tooltip: { y: { formatter: function(v) { return '$' + v.toFixed(6); } } },
-                        plotOptions: { pie: { donut: { size: '65%' } } }
-                    }).render();
-                });
-            </script>
-        </div>
-
-    </div>
-
-    <!-- Top users by cost table -->
-    <div class="bg-base-100 border border-base-200 rounded-xl p-6">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-sm font-semibold text-base-content" th:text="#{admin.llm.top.users}">Top Users by Cost MTD</h2>
-            <a th:href="@{/admin/users}" class="btn btn-ghost btn-xs text-primary" th:text="#{common.view.all}">View all</a>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="table table-sm w-full">
-                <thead>
-                <tr class="text-xs uppercase text-base-content/50">
-                    <th th:text="#{admin.users.col.email}">Email</th>
-                    <th class="text-right" th:text="#{admin.users.col.cost}">LLM Cost</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr th:each="row : ${dashboard.topUsersByCost}"
-                    class="hover:bg-base-200/50">
-                    <td>
-                        <a th:href="@{/admin/users/{id}(id=${row.userId})}"
-                           class="text-sm text-primary hover:underline" th:text="${row.email}">user@email.com</a>
-                    </td>
-                    <td class="text-right font-mono tabular-nums text-sm">
-                        $<span th:text="${#numbers.formatDecimal(row.cost, 1, 6)}">0.000000</span>
-                    </td>
-                </tr>
-                <tr th:if="${#lists.isEmpty(dashboard.topUsersByCost)}">
-                    <td colspan="2" class="text-center text-base-content/40 py-8">Aucune donnée</td>
-                </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
 </div>
+
 </body>
 </html>

@@ -4,14 +4,27 @@ server:
 spring:
   thymeleaf:
     cache: false
-
+  web:
+    resources:
+      # Dev: never cache static JS/CSS so code changes are picked up on a normal reload
+      # (prod keeps the 1-year max-age from application.yml). Without this, the browser
+      # caches /js/*.js for a year and edits appear "ignored" until a hard refresh.
+      cache:
+        cachecontrol:
+          no-cache: true
+          max-age: 0
+        use-last-modified: false
   datasource:
-    url: jdbc:postgresql://localhost:5432/tuganire?user=postgres&password=postgres
-
+    url: jdbc:postgresql://localhost:5432/tuganire
+    username: tuganire
+    password: tuganire
+  data:
+    redis:
+      url: redis://localhost:6379
   jpa:
     show-sql: true
 
 logging:
   level:
     com.tuganire: DEBUG
-    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG

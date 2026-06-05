@@ -1,0 +1,187 @@
+TEAM EXECUTION PLAN
+
+This document orchestrates parallel implementation of the Tuganire MVP using Claude Code Agent Teams. A coordinator agent reads this file and dispatches work to implementer agents. The coordinator NEVER writes code — it assigns, monitors, verifies and unblocks.
+
+PROJECT SUMMARY
+
+Tuganire — a French to Kinyarwanda conversational voice-translation app (Spring Boot 4 backend with an LLM + native-correction layer + STT/TTS, a Python MMS-TTS server, a Thymeleaf/HTMX web POC, and a Kotlin/Compose Android app).
+
+DELIVERY ORDER (web-first, decided by the project owner): build and validate the WEB version first (Phase 1 = Waves 1-8 below, tasks 01,02,04-20,22-24), THEN build Android (Phase 2 = tasks 03 and 21) only after the web POC is validated. The coordinator MUST NOT spawn tasks 03 or 21 during Phase 1.
+
+Phase 1: 22 tasks across 8 execution waves. Peak concurrency: 6 agents (Wave 4). Recommended team size: 6 agents.
+
+DEPENDENCY GRAPH
+
+  PHASE 1 — WEB MVP:
+  Wave 1:  [01-build] [02-python-tts]                       (independent)
+  Wave 2:  [04-dtos] [05-flyway] [06-i18n]                  (all need 01)
+  Wave 3:  [07-interfaces] [08-cache] [09-feedback]         (07,08 need 04; 09 needs 05)
+  Wave 4:  [10-llm] [11-norm-golden] [12-postproc] [13-tts] [14-stt] [15-security]
+                                                            (10,12,13,14 need 07; 11 needs 05,07; 15 needs 01,08)
+  Wave 5:  [16-translation-service]                         (needs 08,10,11,12)
+  Wave 6:  [17-conversation-pipeline] [18-rest-controllers] (17 needs 13,14,16; 18 needs 09,16)
+  Wave 7:  [19-websocket] [20-web-deux-boutons] [22-tests]  (19 needs 17; 20 needs 06,18; 22 needs 12,16,18)
+  Wave 8:  [23-web-splitscreen] [24-ci-cd-readme]           (23 needs 20; 24 needs 18,20)
+
+  PHASE 2 — ANDROID (only after web validation):
+  [03-android-skeleton]  ->  [21-android-conversation-screen]   (21 also needs 18 from Phase 1)
+
+EXECUTION WAVES
+
+Wave 1 — Foundation (start immediately, no dependencies):
+- 01-backend-build-config.txt: agent impl-build
+- 02-python-mms-tts-server.txt: agent impl-python
+(Task 03 android-skeleton is DEFERRED to Phase 2 — do not spawn it now.)
+Estimated duration: 45-60 minutes. After this wave: run ./mvnw clean compile (backend) — must be green before Wave 2.
+
+Wave 2 — Contracts, schema, i18n (after 01):
+- 04-dtos-and-events.txt: agent impl-contracts (needs 01)
+- 05-flyway-and-jpa-entities.txt: agent impl-data (needs 01)
+- 06-i18n-messages.txt: agent impl-i18n (needs 01)
+Estimated duration: 25-50 minutes.
+
+Wave 3 — Core seams (after Wave 2):
+- 07-provider-and-rule-interfaces.txt: agent impl-seams (needs 04)
+- 08-redis-translation-cache.txt: agent impl-cache (needs 04)
+- 09-feedback-service.txt: agent impl-feedback (needs 05)
+Estimated duration: 30-45 minutes.
+
+Wave 4 — Pipeline components (after Wave 3) — PEAK, 6 agents:
+- 10-llm-providers-and-prompt.txt: agent impl-llm (needs 07)
+- 11-french-normalizer-and-golden-dictionary.txt: agent impl-golden (needs 05,07)
+- 12-kinyarwanda-postprocessor-rules.txt: agent impl-postproc (needs 07)
+- 13-tts-providers-and-service.txt: agent impl-tts (needs 07)
+- 14-stt-provider-and-service.txt: agent impl-stt (needs 07)
+- 15-security-cors-ratelimit.txt: agent impl-security (needs 01,08)
+Estimated duration: 50-60 minutes.
+
+Wave 5 — Orchestration (after Wave 4):
+- 16-translation-service-orchestrator.txt: agent impl-translation (needs 08,10,11,12)
+Estimated duration: 40-55 minutes.
+
+Wave 6 — Application services (after Wave 5):
+- 17-conversation-service-audio-pipeline.txt: agent impl-conversation (needs 13,14,16)
+- 18-rest-controllers-and-exception-handling.txt: agent impl-api (needs 09,16)
+Estimated duration: 45-60 minutes.
+
+Wave 7 — Clients & delivery (after Wave 6):
+- 19-websocket-streaming-handler.txt: agent impl-ws (needs 17)
+- 20-web-poc-deux-boutons.txt: agent impl-web (needs 06,18) — uses ui-ux-pro-max + frontend-design skills; review vs rules/thymeleaf-rules.mdc
+- 22-tests-unit-and-integration.txt: agent impl-tests (needs 12,16,18)
+(Task 21 android-conversation-screen is DEFERRED to Phase 2 — do not spawn it now.)
+Estimated duration: 55-60 minutes.
+
+Wave 8 — Polish & ship (after Wave 7):
+- 23-web-poc-splitscreen-and-settings.txt: agent impl-web2 (needs 20) — uses ui-ux-pro-max + frontend-design skills; review vs rules/thymeleaf-rules.mdc
+- 24-ci-cd-and-readme.txt: agent impl-cicd (needs 18,20)
+Estimated duration: 40-55 minutes.
+
+PHASE 1 COMPLETE: deploy the web POC and validate with users (PRD Sprint 3 demo + acceptance criteria) BEFORE starting Phase 2.
+
+Phase 2 — Android (only after web validation):
+- A1: 03-android-skeleton.txt: agent impl-android (no deps)
+- A2: 21-android-conversation-screen.txt: agent impl-android2 (needs 03 and the validated REST API from 18)
+Estimated duration: 85-105 minutes total.
+
+TEAM SIZING
+
+Phase 1 — Web MVP:
+| Wave | Active Agents | Tasks |
+| 1    | 2             | 01, 02 |
+| 2    | 3             | 04, 05, 06 |
+| 3    | 3             | 07, 08, 09 |
+| 4    | 6             | 10, 11, 12, 13, 14, 15 |
+| 5    | 1             | 16 |
+| 6    | 2             | 17, 18 |
+| 7    | 3             | 19, 20, 22 |
+| 8    | 2             | 23, 24 |
+
+Phase 2 — Android (after web validation):
+| Stage | Active Agents | Tasks |
+| A1   | 1             | 03 |
+| A2   | 1             | 21 |
+
+Peak concurrency: 6 agents (Wave 4).
+Recommended minimum team size: 6 agents.
+
+AGENT SPAWN TEMPLATE
+
+For each agent, the coordinator spawns via the Agent tool:
+
+  subagent_type: implementer
+  mode: bypassPermissions
+  name: impl-{task-area}
+  prompt: |
+    You are impl-{task-area} in the Tuganire implementation team.
+
+    Read and implement the task file at tasks/{NN-task-name}.txt.
+    Follow ALL instructions exactly. Respect PROJECT CONTEXT, ARCHITECTURE and
+    TECH STACK AND BEST PRACTICES. Only create/modify the files listed in
+    WHAT TO IMPLEMENT. Run ./mvnw spotless:apply then ./mvnw clean compile
+    (backend tasks) and verify every item in ACCEPTANCE CRITERIA before
+    reporting done. Report completion via SendMessage when finished; if blocked,
+    report the blocker via SendMessage immediately.
+    For tasks 20 and 23: use the ui-ux-pro-max skill for page design, the
+    frontend-design skill for HTML development, and review the result against
+    rules/thymeleaf-rules.mdc before declaring done.
+
+COORDINATION RULES
+
+1. The coordinator NEVER implements code. Only assigns, monitors, and unblocks.
+2. Spawn all tasks in a wave simultaneously (single message, multiple Agent calls).
+3. When a wave completes, run the wave checkpoint (below), then spawn the next wave.
+4. If an agent reports a blocker, analyze it and send guidance via SendMessage.
+5. If an agent fails, reassign the task to a new agent with extra context about the failure.
+6. Track progress per task: pending, in-progress, complete, failed.
+7. After all waves complete, run final validation: ./mvnw -B -ntp clean verify (backend), npm run build-prod (CSS), ./gradlew :app:assembleDebug (android), and the Python server health check.
+
+WAVE CHECKPOINTS (run before advancing)
+
+- After Wave 1: backend ./mvnw clean compile green; Python server starts + /health 200; Android assembleDebug green.
+- After Waves 2-6 (backend): ./mvnw clean compile green (and ./mvnw -B -ntp clean verify after Wave 4 once Redis/Postgres are up via docker-compose).
+- After Wave 7: ./mvnw -B -ntp clean verify green (Testcontainers ITs); web POC serves GET /.
+- After Wave 8: full final validation; README + CI present.
+
+FILE OWNERSHIP MAP (no overlaps within a wave)
+
+Wave 1:
+- impl-build owns: pom.xml, src/main/resources/application*.yml, docker-compose.yml, src/main/java/com/tuganire/TuganireApplication.java, deletion of auth/payment/blog/admin/storage packages + their tests, empty feature-package skeleton.
+- impl-python owns: tts-server/**
+(Android owns android/** but is deferred to Phase 2.)
+
+Wave 2:
+- impl-contracts owns: com/tuganire/translation/{TranslationRequest,TranslationResponse,StructuredTranslation}.java, com/tuganire/conversation/ConversationEvent.java, com/tuganire/feedback/{FeedbackRequest,FeedbackType}.java
+- impl-data owns: src/main/resources/db/migration/V1__*, V2__*, V3__*; com/tuganire/golden/{GoldenEntry,GoldenDictionaryRepo}.java; com/tuganire/feedback/{Feedback,FeedbackRepo}.java
+- impl-i18n owns: src/main/resources/messages*.properties; com/tuganire/config/LocaleConfig.java
+
+Wave 3:
+- impl-seams owns: com/tuganire/llm/LlmProvider.java, com/tuganire/tts/TtsProvider.java, com/tuganire/stt/SttProvider.java, com/tuganire/postprocessor/{CorrectionRule,RuleResult,ProcessedTranslation}.java, com/tuganire/config/{TtsConfig,SttConfig,LlmConfig}.java
+- impl-cache owns: com/tuganire/cache/**
+- impl-feedback owns: com/tuganire/feedback/{FeedbackService,FeedbackServiceImpl}.java (entity/repo already owned by impl-data in Wave 2)
+
+Wave 4:
+- impl-llm owns: com/tuganire/llm/{OpenAiLlmProvider,ClaudeLlmProvider,LlmProviderFactory}.java + llm/prompt/**
+- impl-golden owns: com/tuganire/translation/normalizer/**, com/tuganire/golden/{GoldenDictionaryService,GoldenDictionaryServiceImpl}.java
+- impl-postproc owns: com/tuganire/postprocessor/KinyarwandaPostProcessor.java + postprocessor/rules/**
+- impl-tts owns: com/tuganire/tts/{MmsTtsClient,MmsTtsProvider,OpenAiTtsProvider,ElevenLabsTtsProvider,TtsProviderFactory,TtsService,TtsServiceImpl}.java
+- impl-stt owns: com/tuganire/stt/{WhisperSttProvider,SttProviderFactory,SttService,SttServiceImpl}.java + STT-KINYARWANDA-NOTE.md
+- impl-security owns: com/tuganire/config/{SecurityConfig,CorsConfig,RateLimitProperties}.java, com/tuganire/shared/security/RateLimitFilter.java, and the bucket4j dependency in pom.xml (sole pom editor this wave)
+
+Wave 5:
+- impl-translation owns: com/tuganire/translation/{TranslationService,TranslationServiceImpl}.java
+
+Wave 6:
+- impl-conversation owns: com/tuganire/conversation/{ConversationService,ConversationServiceImpl,AudioStore,AudioStoreImpl,AudioController}.java
+- impl-api owns: com/tuganire/translation/TranslationController.java, com/tuganire/feedback/FeedbackController.java, com/tuganire/conversation/SessionController.java, com/tuganire/shared/exception/**
+
+Wave 7:
+- impl-ws owns: com/tuganire/config/WebSocketConfig.java, com/tuganire/conversation/{TranslationWebSocketHandler,ConversationEventJson}.java
+- impl-web owns: src/main/resources/templates/**, src/main/resources/static/**, com/tuganire/web/WebController.java
+- impl-tests owns: src/test/**, src/test/resources/test-data/**
+(Android conversation screen, android/**, is deferred to Phase 2.)
+
+Wave 8:
+- impl-web2 owns: templates/index.html (extend), templates/{settings,onboarding}.html, static/js/** (extend), com/tuganire/web/WebController.java (extend) — runs AFTER impl-web (Wave 7), no concurrent edit
+- impl-cicd owns: .github/workflows/**, Dockerfile (optional), README.md, docs/ links
+
+No conflicts detected within any wave. Wave 7 impl-ws and impl-web both touch the com.tuganire.conversation / web layers but distinct files; impl-conversation (Wave 6) created AudioController before Wave 7 starts.

@@ -1,0 +1,23 @@
+# Build output — regenerated inside the image
+target/
+
+# Node assets — the frontend-maven-plugin reinstalls node + node_modules during the Maven build
+node/
+node_modules/
+
+# VCS & IDE
+.git/
+.github/
+.idea/
+*.iml
+
+# Local env / docs / tooling not needed at build time
+.env
+.env.*
+docs/
+rules/
+tasks/
+tts-server/
+*.md
+.DS_Store
+run-dev.sh

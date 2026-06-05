@@ -9,17 +9,66 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # GCP container image (GCR / Artifact Registry) — Cloud Run pulls natively from here.
+  REGISTRY: gcr.io
+  IMAGE_NAME: ${{ vars.GCP_PROJECT_ID }}/tuganire
+
 jobs:
   build:
     name: Build & verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tuganire_test
+          POSTGRES_USER: tuganire
+          POSTGRES_PASSWORD: tuganire
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Database for Testcontainers ITs (profile it uses its own Testcontainers postgres,
+      # but the env vars are wired so Spring context can start)
+      DATABASE_URL: jdbc:postgresql://localhost:5432/tuganire_test
+      DATABASE_USER: tuganire
+      DATABASE_PASSWORD: tuganire
+      DATABASE_HOST: localhost
+      DATABASE_NAME: tuganire_test
+      DATABASE_USERNAME: tuganire
+      # Redis
+      REDIS_URL: redis://localhost:6379
+      # AI providers — ITs mock the network; real secrets enable live smoke tests
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_TEST }}
+      # MMS-TTS server (not running in CI; ITs mock the HTTP client)
+      MMS_TTS_URL: http://localhost:8001
+      # App base URL
+      BASE_URL: http://localhost:8080
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,7 +78,7 @@ jobs:
       - name: Make mvnw executable
         run: chmod +x ./mvnw
 
-      - name: Run Maven verify
+      - name: Run Maven verify (unit + IT + Spotless + SpotBugs + JaCoCo)
         run: ./mvnw -B -ntp clean verify
 
       - name: Upload JaCoCo coverage report
@@ -58,3 +107,91 @@ jobs:
           path: target/failsafe-reports/
           if-no-files-found: ignore
           retention-days: 14
+
+  publish:
+    name: Build & Push Image (main only)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x ./mvnw
+
+      - name: Authenticate to GCP (service account JSON key)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build and push image via Jib (SHA + latest tags)
+        run: |
+          ./mvnw -B -ntp compile jib:build \
+            -Djib.to.image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -Djib.to.tags=latest
+
+  deploy:
+    name: Deploy to Cloud Run (main only)
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Authenticate to GCP (service account JSON key)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ vars.SERVICE_NAME || 'tuganire-backend' }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          region: ${{ vars.GCP_REGION || 'europe-west1' }}
+          flags: '--allow-unauthenticated --memory=1Gi --cpu=1'
+          revision_traffic: 'LATEST=100'
+          env_vars: |
+            SPRING_PROFILES_ACTIVE=prod
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DATABASE_USER=${{ secrets.DATABASE_USER }}
+            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            BASE_URL=${{ vars.BASE_URL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            MMS_TTS_URL=${{ vars.MMS_TTS_URL }}
+
+      - name: Verify deployment (health check)
+        run: |
+          echo "Deployed at: ${{ steps.deploy.outputs.url }}"
+          echo "Waiting for service to be ready..."
+          sleep 30
+          curl -f ${{ steps.deploy.outputs.url }}/actuator/health || echo "Health check failed"

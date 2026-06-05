@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{app.title}">Tuganire</title>
+</head>
+<body>
+
+<div layout:fragment="content"
+     x-data="onboarding()"
+     x-init="init()"
+     class="flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <!--
+        Onboarding overlay: shown only on first visit (localStorage flag).
+        Skippable at any step; does not reappear after completion/skip.
+    -->
+    <div x-show="visible"
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex flex-col items-center justify-center
+                bg-base-100/95 backdrop-blur-sm px-4"
+         role="dialog"
+         aria-modal="true"
+         th:aria-label="#{aria.onboarding}">
+
+        <!-- Skip button — always visible -->
+        <button type="button"
+                class="absolute top-4 right-4 btn btn-ghost btn-sm text-base-content/50
+                       hover:text-base-content transition-colors duration-150"
+                @click="skip()"
+                th:aria-label="#{aria.onboardingClose}">
+            <span th:text="#{onboarding.skip}">Passer</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                 stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+
+        <!-- Content area -->
+        <div class="w-full max-w-sm">
+
+            <!-- App title -->
+            <div class="text-center mb-8">
+                <span class="font-display text-3xl font-medium text-primary tracking-tight"
+                      th:text="#{app.title}">
+                    Tuganire
+                </span>
+            </div>
+
+            <!-- ── Step 1: Choose language ──────────────────────────────── -->
+            <div x-show="step === 1"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-x-4"
+                 x-transition:enter-end="opacity-100 translate-x-0"
+                 class="text-center">
+                <div class="mb-6 w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-primary" fill="none"
+                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-semibold text-base-content mb-3"
+                    th:text="#{onboarding.step1.title}">
+                    Choisissez votre langue
+                </h2>
+                <p class="text-sm text-base-content/60 leading-relaxed"
+                   th:text="#{onboarding.step1.desc}">
+                    L'application traduit entre le français et le kinyarwanda en temps réel.
+                </p>
+            </div>
+
+            <!-- ── Step 2: Press and speak ─────────────────────────────── -->
+            <div x-show="step === 2"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-x-4"
+                 x-transition:enter-end="opacity-100 translate-x-0"
+                 class="text-center">
+                <div class="mb-6 w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-primary" fill="none"
+                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-semibold text-base-content mb-3"
+                    th:text="#{onboarding.step2.title}">
+                    Parlez naturellement
+                </h2>
+                <p class="text-sm text-base-content/60 leading-relaxed"
+                   th:text="#{onboarding.step2.desc}">
+                    Appuyez sur le bouton correspondant à votre langue et parlez.
+                </p>
+            </div>
+
+            <!-- ── Step 3: Listen to translation ──────────────────────── -->
+            <div x-show="step === 3"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-x-4"
+                 x-transition:enter-end="opacity-100 translate-x-0"
+                 class="text-center">
+                <div class="mb-6 w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-accent" fill="none"
+                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-semibold text-base-content mb-3"
+                    th:text="#{onboarding.step3.title}">
+                    Écoutez la traduction
+                </h2>
+                <p class="text-sm text-base-content/60 leading-relaxed"
+                   th:text="#{onboarding.step3.desc}">
+                    La traduction est lue automatiquement.
+                </p>
+            </div>
+
+            <!-- ── Progress dots ───────────────────────────────────────── -->
+            <div class="flex justify-center gap-2 mt-8 mb-6"
+                 role="status"
+                 th:aria-label="#{aria.onboarding}">
+                <template x-for="i in totalSteps" :key="i">
+                    <button type="button"
+                            class="w-2 h-2 rounded-full transition-all duration-200 focus-visible:ring-2
+                                   focus-visible:ring-primary focus-visible:ring-offset-2"
+                            :class="step === i
+                                     ? 'bg-primary w-5'
+                                     : 'bg-base-300 hover:bg-base-content/30'"
+                            @click="step = i"
+                            :aria-label="`${i}`">
+                    </button>
+                </template>
+            </div>
+
+            <!-- ── Navigation buttons ──────────────────────────────────── -->
+            <div class="flex gap-3">
+                <!-- Next / Get started -->
+                <button type="button"
+                        class="flex-1 btn btn-primary"
+                        @click="next()"
+                        :aria-label="step < totalSteps ? /*[[#{onboarding.next}]]*/ 'Suivant' : /*[[#{onboarding.start}]]*/ 'Commencer'">
+                    <span x-show="step < totalSteps" th:text="#{onboarding.next}">Suivant</span>
+                    <span x-show="step >= totalSteps" x-cloak th:text="#{onboarding.start}">Commencer</span>
+                    <svg x-show="step < totalSteps"
+                         xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none"
+                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                    </svg>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Main conversation content (shown after onboarding, or immediately if returning user) -->
+    <div x-show="!visible"
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="flex flex-col flex-1 items-center justify-center text-center px-8">
+        <p class="text-base-content/40 text-sm mb-4" th:text="#{onboarding.step2}">
+            Appuyez sur un bouton et parlez
+        </p>
+        <a th:href="@{/}"
+           class="btn btn-primary btn-sm"
+           th:text="#{app.title}">
+            Tuganire
+        </a>
+    </div>
+
+</div>
+
+<!-- ── Page scripts ───────────────────────────────────────────────────────── -->
+<th:block layout:fragment="scripts">
+    <script th:src="@{/js/settings.js}"></script>
+</th:block>
+
+</body>
+</html>

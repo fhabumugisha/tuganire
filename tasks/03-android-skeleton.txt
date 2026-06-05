@@ -1,0 +1,58 @@
+TASK 03 — Android App Skeleton (Kotlin + Jetpack Compose)
+
+PROJECT CONTEXT
+
+A standalone Android client for Tuganire. Per ARCHI.md it is conceptually a separate repository (tuganire-android) but for this MVP it is created as a subfolder android/ at the repository root. No Java backend conventions apply; follow idiomatic Kotlin + Android + Jetpack Compose practices. All user-facing strings must come from string resources (FR + RW), never hardcoded — mirroring the backend i18n rule.
+
+ARCHITECTURE
+
+See ARCHI.md section 8 ("App Android") for the exact target structure under android/app/src/main: MainActivity.kt; packages conversation/ (ConversationScreen.kt, ConversationViewModel.kt, components/ SpeechBubble.kt, ListeningIndicator.kt, ProviderSwitch.kt), audio/ (AudioRecorder.kt, AudioPlayer.kt), network/ (TuganireApi.kt, TranslationWebSocket.kt), feedback/ (FeedbackButton.kt), settings/ (SettingsScreen.kt); res/values/ strings-fr.xml, strings-rw.xml, themes.xml. This task delivers the SKELETON only (project builds, MainActivity shows an empty ConversationScreen); the full conversation flow is Task 21.
+
+TECH STACK AND BEST PRACTICES
+
+Kotlin 2.x, Gradle Kotlin DSL. Jetpack Compose + Material 3. Min SDK 29 (Android 10). Networking: OkHttp 5.x (+ WebSocket). DI: Hilt. Audio capture: AudioRecord (PCM 16kHz mono). Playback: ExoPlayer Media3. Use Compose BOM, single-activity architecture, ViewModel + StateFlow for UI state.
+
+CONTEXT
+
+Establishes the Android project so Task 21 can implement the conversation screen and networking against the backend REST/WebSocket contract (PRD Sprint 4, US-01/US-02). Builds independently of the backend.
+
+DEPENDENCIES
+
+None. This task can start immediately.
+
+PARALLEL GROUP
+
+Group A (Foundation), Wave 1. Runs in parallel with Task 01 and Task 02 — separate stack and folder.
+
+WHAT TO IMPLEMENT
+
+File: android/build.gradle.kts and android/settings.gradle.kts
+Purpose: Root Gradle config, plugin versions (Android Gradle Plugin, Kotlin, Hilt), Compose BOM.
+
+File: android/app/build.gradle.kts
+Purpose: App module: applicationId com.tuganire, minSdk 29, Compose enabled, dependencies (Compose Material3, Hilt, OkHttp 5, ExoPlayer Media3, lifecycle-viewmodel-compose).
+
+File: android/app/src/main/AndroidManifest.xml
+Purpose: Declare RECORD_AUDIO and INTERNET permissions, the @HiltAndroidApp Application, and MainActivity as launcher.
+
+File: android/app/src/main/java/com/tuganire/MainActivity.kt and TuganireApplication.kt
+Purpose: @AndroidEntryPoint single activity hosting setContent { ConversationScreen() }; @HiltAndroidApp Application class.
+
+File: android/app/src/main/java/com/tuganire/conversation/ConversationScreen.kt and ConversationViewModel.kt
+Purpose: Empty Compose scaffold with a top bar (Tuganire title) and a placeholder body; ViewModel with a StateFlow<ConversationUiState> stub. Full logic comes in Task 21.
+
+File: android/app/src/main/res/values/strings-fr.xml, strings-rw.xml, themes.xml
+Purpose: App name and a few placeholder strings in FR and RW; Material 3 theme.
+
+ACCEPTANCE CRITERIA
+
+1. ./gradlew :app:assembleDebug (run from android/) builds an APK with zero errors.
+2. The manifest declares RECORD_AUDIO and INTERNET permissions.
+3. Min SDK is 29 and the app uses Jetpack Compose + Material 3.
+4. Launching the app shows a Compose screen with a "Tuganire" top bar (no crash).
+5. Hilt is wired (@HiltAndroidApp + @AndroidEntryPoint) and compiles.
+6. No user-facing string is hardcoded in Kotlin; all come from string resources.
+
+NOTES
+
+This is the only Android task in the foundation wave; keep it minimal so it builds quickly. Task 21 fills in audio capture, playback, networking and the two-button mode. If the agent cannot run the Android SDK toolchain, it must still produce a structurally valid project that would assemble in a standard Android environment.

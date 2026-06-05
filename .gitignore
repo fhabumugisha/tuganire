@@ -27,6 +27,12 @@ node/
 node_modules/
 npm-debug.log*
 
+### Python (tts-server) ###
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+
 ### Env files ###
 .env
 .env.local

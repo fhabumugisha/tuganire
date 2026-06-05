@@ -1,0 +1,58 @@
+TASK 21 — Android Conversation Screen (Audio Capture, Playback, Networking)
+
+PROJECT CONTEXT
+
+The Android client under android/ (skeleton built in Task 03). Idiomatic Kotlin + Jetpack Compose + Material 3. All user-facing strings come from string resources (FR + RW), never hardcoded — mirroring the backend i18n rule.
+
+ARCHITECTURE
+
+See ARCHI.md section 8 ("App Android" structure) and the C4 container table (Android: Kotlin, Compose, OkHttp). Implement the "deux boutons" conversation flow against the backend REST API (Task 18) first (POST /api/v1/translate, POST /api/v1/audio/translate, POST /api/v1/feedback), with optional WebSocket streaming (Task 19) as a follow-up. Packages: conversation/ (ConversationScreen, ConversationViewModel, components/), audio/ (AudioRecorder, AudioPlayer), network/ (TuganireApi, TranslationWebSocket), feedback/ (FeedbackButton).
+
+TECH STACK AND BEST PRACTICES
+
+Kotlin 2.x, Compose Material 3, Hilt DI, OkHttp 5 (+ WebSocket), AudioRecord (PCM 16kHz mono) for capture, ExoPlayer Media3 for playback. ViewModel + StateFlow for UI state; coroutines for I/O (Dispatchers.IO). Request RECORD_AUDIO at runtime. Big accessible buttons, a pulsed listening indicator (PRD UX), auto-play returned audio, 👍/👎 feedback. Backend base URL configurable (BuildConfig / DataStore).
+
+CONTEXT
+
+Delivers PRD Sprint 4: "APK installable, fonctionnalités identiques au web" — US-01/US-02/US-03/US-05/US-06 on Android. Depends on the API contract (Task 18) and the Android skeleton (Task 03).
+
+DEPENDENCIES
+
+Requires Task 03 (Android skeleton) and Task 18 (REST API contract).
+
+PARALLEL GROUP
+
+Group G (Clients & delivery), Wave 7. Runs in parallel with Tasks 19, 20 and 22 — owns the android/ subtree exclusively.
+
+WHAT TO IMPLEMENT
+
+File: android/app/src/main/java/com/tuganire/network/TuganireApi.kt
+Purpose: OkHttp-based client (or Retrofit) calling POST /api/v1/translate, POST /api/v1/audio/translate (multipart), POST /api/v1/feedback. Data classes mirror the backend DTOs. Base URL injected.
+
+File: android/app/src/main/java/com/tuganire/audio/AudioRecorder.kt and AudioPlayer.kt
+Purpose: AudioRecorder wraps AudioRecord (PCM 16kHz mono) to capture a turn into a byte[]/file; AudioPlayer wraps ExoPlayer Media3 to play the returned MP3 (from audioUrl or bytes).
+
+File: android/app/src/main/java/com/tuganire/conversation/ConversationViewModel.kt
+Purpose: StateFlow<ConversationUiState> (messages, isRecording, currentMode); functions startFrenchTurn()/startKinyarwandaTurn() that record → call the API → append the result → auto-play; submitFeedback().
+
+File: android/app/src/main/java/com/tuganire/conversation/ConversationScreen.kt and components/ (SpeechBubble.kt, ListeningIndicator.kt)
+Purpose: Compose UI for the two-button mode: conversation list of SpeechBubbles, two big speak buttons, pulsed ListeningIndicator, feedback buttons. Strings from resources.
+
+File: android/app/src/main/java/com/tuganire/feedback/FeedbackButton.kt
+Purpose: 👍/👎 composable calling the ViewModel.
+
+File: android/app/src/main/res/values/strings-fr.xml and strings-rw.xml
+Purpose: Add all conversation-screen strings in FR and RW.
+
+ACCEPTANCE CRITERIA
+
+1. ./gradlew :app:assembleDebug builds an APK with zero errors.
+2. The app requests RECORD_AUDIO at runtime and captures a French turn, posts it, and displays the translated Kinyarwanda bubble.
+3. Returned audio plays automatically via ExoPlayer and can be replayed.
+4. 👍/👎 posts feedback to the backend.
+5. The backend base URL is configurable (not hardcoded to a single host).
+6. No hardcoded user-facing strings; all from string resources (FR + RW).
+
+NOTES
+
+REST first; WebSocket streaming (Task 19) can be added once the loop works. If the Android SDK toolchain is unavailable to the agent, produce a structurally valid, compilable project that would assemble in a standard Android environment. Test on Android 10+ (min SDK 29) per PRD acceptance criteria.

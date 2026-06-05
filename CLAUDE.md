@@ -15,10 +15,13 @@ docker-compose up -d
 # Run app (dev profile = application-dev.yml overrides on top of application.yml)
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
-# Tests (src/test is currently empty — JUnit + Testcontainers are wired but unused)
+# Unit tests (Surefire)
 ./mvnw test
 ./mvnw test -Dtest=ClassNameTest
 ./mvnw test -Dtest=ClassNameTest#methodName
+
+# Integration tests (Failsafe, *IT classes; Testcontainers Postgres)
+./mvnw verify          # runs full pipeline: unit + IT + SpotBugs/FindSecBugs + JaCoCo
 
 # Build / package
 ./mvnw clean package -DskipTests
@@ -32,7 +35,7 @@ npm run build-prod   # minified, production
 ./mvnw spotless:apply
 ```
 
-**Note:** Spotless and Checkstyle run at the `validate` phase, so **every** Maven build (including `compile`) fails on style violations. SpotBugs + FindSecBugs run at `verify`. The Maven `frontend-maven-plugin` rebuilds CSS during `generate-resources`, so `./mvnw package` produces a self-contained jar without a separate `npm run build`.
+**Note:** Spotless and Checkstyle run at the `validate` phase, so **every** Maven build (including `compile`) fails on style violations. SpotBugs + FindSecBugs run at `verify`. The Maven `frontend-maven-plugin` rebuilds CSS during `generate-resources`, so `./mvnw package` produces a self-contained jar without a separate `npm run build`. CI (`.github/workflows/ci.yml`) runs `./mvnw -B -ntp clean verify` on every push/PR — match it locally before pushing.
 
 ## Architecture
 
@@ -40,7 +43,7 @@ Feature-driven packages under `com.tuganire`. Each feature owns its `controller 
 
 ```
 com.tuganire/
-├── auth/          User registration, login, profile, password reset (custom UserDetailsService)
+├── auth/          Registration, login, profile, password reset, email verification, OAuth2/OIDC social login (custom UserDetailsService)
 ├── payment/       Stripe subscriptions, webhooks, billing portal, plan-based access (FREE/PREMIUM)
 ├── blog/          Public blog + admin Markdown editor (EasyMDE) + AI excerpt/cover generation
 ├── admin/         /admin dashboard: user mgmt + LLM-usage analytics (LlmUsageTracker writes to llm_usage_events)
@@ -75,11 +78,11 @@ Spring AI 1.x with OpenAI starter (`gpt-4o-mini` chat, `gpt-image-1` images). pg
 - Thymeleaf + `thymeleaf-layout-dialect` (base layout in `templates/layout/`)
 - Tailwind v4 CSS-first config (no `tailwind.config.js`) — design tokens live inline in `src/main/resources/static/css/input.css` via `@theme` / `@plugin "daisyui/theme"`
 - HTMX for partial updates, Alpine.js for client interactivity
-- i18n: `messages.properties` (FR default, see `spring.web.locale: fr`) + `messages_en.properties`
+- i18n: `messages.properties` (FR default, see `spring.web.locale: fr`) + `messages_en.properties`. **All** user-facing UI/form/table text must come from message properties — no hardcoded strings.
 
 ### Database
 
-Flyway migrations in `src/main/resources/db/migration/` (V001–V007). JPA `ddl-auto: none` — schema changes **must** add a new migration. The dev profile uses the same Postgres as prod (`localhost:5432/tuganire` from `docker-compose.yml`).
+Flyway migrations in `src/main/resources/db/migration/` (currently through V009 — email verification + OAuth provider columns). JPA `ddl-auto: none` — schema changes **must** add a new migration. The dev profile uses the same Postgres as prod (`localhost:5432/tuganire` from `docker-compose.yml`).
 
 ### Configuration profiles
 
@@ -95,6 +98,13 @@ See README for the full list. Critical ones: `DATABASE_*`, `STRIPE_API_KEY`, `ST
 
 - Lombok is used everywhere (`@RequiredArgsConstructor` for DI, `@Slf4j` for logging, `@Builder` on entities). Don't write boilerplate constructors.
 - Services are exposed as **interfaces** with a sibling `*Impl` class — keep that pattern when adding features.
+- Controllers return **DTOs, never entities**; convert with a feature `*Mapper`. Prefer Java `record`s for DTOs.
+- Replace duplicated string literals with constants (see each feature's `constant/` package).
 - Admin routes require `hasRole("ADMIN")`; the `admin` column on `users` was added in V005 and is checked by `UserService`.
 - Auth uses session cookies (`JSESSIONID`), `sessionFixation().newSession()`, max one session per user. CSRF is enabled except on `/webhooks/**`.
 - Code style is enforced by `eclipse-formatter.xml` + `checkstyle.xml`. After edits, run `./mvnw spotless:apply` before compiling.
+- More detailed backend/frontend conventions live in `rules/spring-boot-rules.mdc` and `rules/thymeleaf-rules.mdc` (Cursor rule files) — consult them when adding code.
+
+## Tests
+
+`src/test/java` has unit + integration tests (`AuthControllerIT`, `StripeWebhookIT`, `LocalStorageServiceImplTest`, `AbstractIntegrationTest` base). **Gotcha:** test classes still live under the pre-fork package `com.saaskit` while main code is `com.tuganire` — when adding tests, follow the `com.tuganire` package or migrate the existing ones. ITs use Testcontainers Postgres; profiles `application-test.yml` (unit) and `application-it.yml` (IT).

@@ -1,0 +1,49 @@
+TASK 19 — WebSocket Streaming Handler
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): config under config/, feature code in its package, Lombok, no inline duplicated literals. Java 21 virtual threads — no synchronized (use ReentrantLock if needed). Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 6 ("WebSocket /ws/conversation/{sessionId}") for the exact binary client→server framing (type byte 0x01 audio PCM 16kHz mono, 0x02 metadata JSON, 0x03 keepalive) and the JSON server→client messages (PARTIAL_TRANSCRIPT, FINAL_TRANSCRIPT, TRANSLATION_READY, AUDIO_READY, ERROR). Place TranslationWebSocketHandler in com.tuganire.conversation and WebSocketConfig in com.tuganire.config. The handler delegates to ConversationService's streaming variant (Task 17) and serializes ConversationEvent (Task 04) into the documented JSON messages.
+
+TECH STACK AND BEST PRACTICES
+
+Spring WebSocket (spring-boot-starter-websocket, Task 01). Register the handler at /ws/conversation/{sessionId} via WebSocketConfigurer. Handle BinaryMessage (parse the 1-byte type prefix) and send TextMessage JSON back. Use Jackson 3 (tools.jackson.*) for serialization — do not import com.fasterxml.jackson.*. Buffer incoming audio chunks per session until a "fin de tour" metadata frame (0x02) triggers the pipeline. Virtual threads handle the per-session work; avoid blocking the WebSocket I/O thread for long synthesis — run the pipeline on a virtual-thread executor and push events as they arrive. /ws/** is permitAll and CSRF-ignored (Task 15).
+
+CONTEXT
+
+Real-time streaming is what makes the conversation feel fluid (PRD: WebSocket streaming temps réel; latency target ≤ 3s p95; streaming partial TTS is the mitigation for the latency risk). The Android client (Task 21) connects here; the web POC can use REST first and WebSocket later. Depends on the conversation pipeline (Task 17).
+
+DEPENDENCIES
+
+Requires Task 17 (ConversationService streaming variant) and Task 04 (ConversationEvent).
+
+PARALLEL GROUP
+
+Group G (Clients & delivery), Wave 7. Runs in parallel with Tasks 20 (web POC), 21 (Android conversation) and 22 (tests) — distinct files (conversation/handler + config/WebSocketConfig).
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/config/WebSocketConfig.java
+Purpose: @Configuration @EnableWebSocket implementing WebSocketConfigurer; register TranslationWebSocketHandler at "/ws/conversation/{sessionId}" with an interceptor capturing the sessionId path variable; configure max binary message size for audio chunks.
+
+File: src/main/java/com/tuganire/conversation/TranslationWebSocketHandler.java
+Purpose: extends BinaryWebSocketHandler (or AbstractWebSocketHandler). On binary message: read the 1-byte type; 0x01 → append audio chunk to the session buffer; 0x02 → parse metadata (language, end-of-turn) and, on end-of-turn, invoke ConversationService streaming with a sink that serializes each ConversationEvent to the documented JSON and sends a TextMessage; 0x03 → reply keepalive. On error → send an ERROR message. Clean up the session buffer on close.
+
+File: src/main/java/com/tuganire/conversation/ConversationEventJson.java (mapper helper)
+Purpose: Map each ConversationEvent record to the exact JSON shape in ARCHI section 6 (field names type, sessionId, text, lang, fromGoldenDict, appliedCorrections, audioUrl, durationMs, code, message). Keep the type strings uppercase as documented.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. A WebSocket client can connect to /ws/conversation/{sessionId} (handshake 101) without authentication.
+3. Sending audio chunks (0x01) followed by an end-of-turn metadata frame (0x02) triggers, in order, FINAL_TRANSCRIPT, TRANSLATION_READY and AUDIO_READY JSON text messages.
+4. The JSON message field names and uppercase type values match ARCHI section 6 exactly.
+5. A keepalive frame (0x03) is answered without starting the pipeline.
+6. No file imports com.fasterxml.jackson.*; no synchronized keyword is used.
+
+NOTES
+
+Partial transcript streaming (PARTIAL_TRANSCRIPT) is desirable but optional for MVP — emit it if the STT provider supports incremental results, otherwise send only FINAL_TRANSCRIPT (note the decision in a comment). Per-session audio buffers must be released on connection close to avoid leaks. The binary protocol is fixed by ARCHI; do not invent a different framing.

@@ -1,0 +1,67 @@
+TASK 20 — Web POC: "Deux Boutons" Mode (Thymeleaf + HTMX + Alpine + Web Speech)
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): Thymeleaf + thymeleaf-layout-dialect (base layout in templates/layout/), Tailwind v4 CSS-first (no tailwind.config.js — tokens in static/css/input.css via @theme), HTMX for partial updates, Alpine.js for client interactivity. ALL user-facing text comes from message properties (Task 06) via #{...} — no hardcoded strings. WebController returns DTOs/fragments. Run ./mvnw spotless:apply (and npm run build-prod for CSS) before finishing.
+
+MANDATORY SKILL USAGE (per project owner)
+- Page DESIGN (layout, visual hierarchy, component composition, color/spacing decisions for the two screens) MUST be produced using the ui-ux-pro-max skill.
+- HTML page DEVELOPMENT (writing the Thymeleaf templates and frontend markup) MUST be done using the frontend-design skill.
+- VALIDATION and REVIEW of the produced HTML MUST follow the rules in rules/thymeleaf-rules.mdc (read that file and comply with every applicable rule before declaring the task done).
+
+ARCHITECTURE
+
+See PRD section 5 (UX — the "deux boutons" mockup, the strict UX rules) and ARCHI.md section 8 (templates/index.html, fragments/translation.html, fragments/feedback.html, layout.html; static/css, static/js). The web POC calls the backend REST API (Task 18: POST /api/v1/translate, POST /api/v1/feedback) — French STT is captured in-browser via Web Speech API, sent as text to the backend, and the returned Kinyarwanda text is shown plus its audio played. Place WebController in com.tuganire.web.
+
+TECH STACK AND BEST PRACTICES
+
+Thymeleaf 3.1, HTMX 2.x, Alpine.js 3.x, Tailwind CSS 4. HTMX: use hx:post (Thymeleaf namespace) so the CSRF token is injected automatically (Task 15 keeps CSRF on for the web POC); hx-target + hx-swap to swap the returned translation fragment into the conversation list. Alpine: x-data for local state (recording flag, selected mode), init the Web Speech API SpeechRecognition with lang 'fr-FR', interimResults false, parse only isFinal results, then post the transcript. IMPORTANT Web Speech API constraints: works in Chrome (and Chromium) only, requires HTTPS in production (localhost is fine), Firefox does NOT support recognition — provide a visible text-input fallback. Pause recognition during audio playback to avoid self-triggering. A clear pulsed "listening" animation is required (PRD UX rule). Auto-play the returned audio. Tailwind v4: define design tokens in static/css/input.css under @theme (no JS config); keep DaisyUI @plugin if used.
+
+CONTEXT
+
+This is the public, shareable demo (PRD Sprint 3: "URL publique partageable, conversation FR↔RW fonctionnelle") and the community-validation surface. It implements US-01, US-02, US-03, US-05 (replay), US-06 (feedback 👍/👎) and US-07 (no account). It depends on the REST API (Task 18) and the i18n bundles (Task 06).
+
+DEPENDENCIES
+
+Requires Task 18 (REST controllers) and Task 06 (message bundles).
+
+PARALLEL GROUP
+
+Group G (Clients & delivery), Wave 7. Runs in parallel with Tasks 19 (WebSocket), 21 (Android) and 22 (tests) — owns templates/, static/ and WebController. (Task 23 later extends these templates and must run after this task.)
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/web/WebController.java
+Purpose: @Controller. GET "/" renders index with the default "deux boutons" mode. A POST handler (or rely on HTMX posting directly to /api/v1/translate then swapping a returned fragment) — for HTMX fragment swapping, add a thin endpoint that calls TranslationService and returns the translation fragment HTML.
+
+File: src/main/resources/templates/layout/layout.html
+Purpose: Base layout (thymeleaf-layout-dialect): head with Tailwind CSS link, HTMX + Alpine script tags, CSP-compatible; top bar with app title and ⚙️/🎙️/📊 actions (text via #{...}).
+
+File: src/main/resources/templates/index.html
+Purpose: The "deux boutons" screen per the PRD mockup: a scrollable conversation list (FR bubbles, RW bubbles with 👍/👎/🔊), and two big buttons (Parler français / Kuvuga ikinyarwanda) wired with Alpine + Web Speech API and HTMX. Listening indicator (pulsed animation). Text-input fallback for unsupported browsers.
+
+File: src/main/resources/templates/fragments/translation.html
+Purpose: A conversation-bubble fragment returned by HTMX: shows source text, translated text, an audio play button (auto-played), and the feedback buttons.
+
+File: src/main/resources/templates/fragments/feedback.html
+Purpose: 👍/👎 fragment posting to /api/v1/feedback via hx:post; shows a discreet "thanks" on success (#{feedback.thanks}).
+
+File: src/main/resources/static/css/input.css
+Purpose: Tailwind v4 entry with @import "tailwindcss" and an @theme block of design tokens (colors, spacing, radius) chosen during the ui-ux-pro-max design step. (Compiled to static/css output by npm run build-prod / frontend-maven-plugin.)
+
+File: src/main/resources/static/js/conversation.js
+Purpose: Alpine component(s): Web Speech API setup (fr-FR), recording toggle, posting transcript, audio playback control, replay-last (US-05), mode state. Keep it minimal — no build step.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile and npm run build-prod succeed; the app serves GET / with the "deux boutons" screen.
+2. Clicking "Parler français" in Chrome starts Web Speech recognition (fr-FR), and on a final result posts the transcript and swaps in a translation bubble showing the Kinyarwanda text.
+3. The returned audio auto-plays and can be replayed via the 🔊 button; recognition is paused during playback.
+4. 👍/👎 on a bubble posts to /api/v1/feedback (with CSRF via hx:post) and shows a discreet thanks message.
+5. No hardcoded user-facing strings — all via #{...}; switching ?lang= changes the UI language.
+6. A visible text-input fallback works in browsers without Web Speech recognition (e.g. Firefox).
+7. The templates comply with rules/thymeleaf-rules.mdc (validated/reviewed against that file).
+
+NOTES
+
+Use ui-ux-pro-max for the design and frontend-design for writing the HTML, then review against rules/thymeleaf-rules.mdc — these three steps are mandatory per the project owner. Web Speech API streams audio to Google and needs HTTPS in production; note this to users in the UI. The split-screen mode and settings/provider switch are Task 23 — keep this screen to the two-button mode but structure templates so Task 23 can add the split-screen layout without rewriting them.

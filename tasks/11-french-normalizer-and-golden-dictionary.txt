@@ -1,0 +1,52 @@
+TASK 11 — French Normalizer and Golden Dictionary Service
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): service interface + *Impl, Lombok, constants in constant/ files, no inline duplicated literals. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5 (TranslationService calls normalizer.normalize then goldenDict.lookup before the LLM) and the package layout in section 8 (translation/normalizer/FrenchNormalizer.java; golden/GoldenDictionaryService.java). The GoldenEntry entity + GoldenDictionaryRepo and the 50+ seed rows already exist (Task 05). Place FrenchNormalizer in com.tuganire.translation.normalizer and GoldenDictionaryService (interface) + Impl in com.tuganire.golden.
+
+TECH STACK AND BEST PRACTICES
+
+Plain Java 21 (no external NLP library needed for MVP). FrenchNormalizer applies rule-based transforms: slang→standard, remove hedges ("genre", "du coup", "en fait"), disambiguate "on"→"nous"/"quelqu'un" heuristically, normalize whitespace/case for lookup. Use a Map of slang→standard and a List of hedge tokens as constants. GoldenDictionaryService.lookup normalizes the query the same way (lowercase, trim) and calls GoldenDictionaryRepo.findFirstBySourceLangAndTargetLangAndSourceTextIgnoreCase; on hit, increment usage_count (transactional) and map to a TranslationResponse via TranslationResponse.fromGoldenDictionary(...).
+
+CONTEXT
+
+The normalizer cleans Marc's transcribed French before translation (PRD pipeline "NORMALIZER FR"); the golden dictionary returns native-validated translations for ~50 common phrases, skipping the LLM entirely (PRD pipeline "DICTIONNAIRE D'OR", absorbs ~40% of requests per the cost risk mitigation). Both feed TranslationService (Task 16).
+
+DEPENDENCIES
+
+Requires Task 05 (GoldenEntry + GoldenDictionaryRepo + seed data) and Task 07 (no direct interface, but uses translation DTOs from Task 04). Effectively depends on Tasks 04 and 05.
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 10, 12, 13, 14, 15 — distinct packages (translation/normalizer, golden).
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/translation/normalizer/FrenchNormalizer.java
+Purpose: @Component with String normalize(String frenchText). Lowercase-insensitive cleanup: strip hedges, replace slang with standard forms (constant map), collapse whitespace. Must be idempotent (normalizing twice == once).
+
+File: src/main/java/com/tuganire/translation/normalizer/NormalizerConstants.java
+Purpose: Constants: HEDGES list, SLANG_TO_STANDARD map. No inline literals in the normalizer.
+
+File: src/main/java/com/tuganire/golden/GoldenDictionaryService.java
+Purpose: interface Optional<TranslationResponse> lookup(String sourceText, Locale src, Locale tgt);.
+
+File: src/main/java/com/tuganire/golden/GoldenDictionaryServiceImpl.java
+Purpose: @Service @RequiredArgsConstructor implementing lookup: normalize the query the same way as the seed keys, call the repo, on hit increment usageCount (@Transactional) and return TranslationResponse.fromGoldenDictionary(originalText, entry.getTargetText(), List.of()); on miss return Optional.empty().
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. FrenchNormalizer removes at least the hedges "du coup", "genre", "en fait" and is idempotent.
+3. GoldenDictionaryService.lookup returns a present TranslationResponse with fromGoldenDictionary=true for a seeded phrase (case/whitespace-insensitive match).
+4. A golden-dictionary hit increments the matched row's usage_count.
+5. lookup returns Optional.empty() for a phrase not in the dictionary.
+6. No inline string literals duplicated across the normalizer (constants used).
+
+NOTES
+
+The normalizer is FR-only for MVP (ARCHI section 5: "Normalisation source FR uniquement"); for RW source, TranslationService skips it. Keep matching logic simple and deterministic so the golden hit rate is predictable and the cache (Task 08) layers cleanly on top. Do not call the LLM here — misses simply return empty and TranslationService falls through to the LLM.

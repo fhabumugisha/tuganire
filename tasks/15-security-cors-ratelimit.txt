@@ -1,0 +1,52 @@
+TASK 15 — Security, CORS and Rate Limiting
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): cross-cutting config under config/ (and shared/security). No user authentication in the MVP (PRD: "Pas d'auth MVP", anonymous sessions by UUID). Lombok; constants for header/route names. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 10 (Sécurité): no auth (anonymous UUID sessions, no PII); rate limiting Bucket4j + Redis, 60 req/min per device; CORS whitelist (tuganire.app, localhost:8080 dev); @Valid Bean Validation on endpoints; strict CSP for Thymeleaf templates; audio ephemeral in Redis TTL 5 min. tuganire.rate-limit.requests-per-minute=60, requests-per-day=1000 (Task 01 yml). Place SecurityConfig, CorsConfig (or in SecurityConfig), and a RateLimitFilter/interceptor in com.tuganire.config or com.tuganire.shared.security.
+
+TECH STACK AND BEST PRACTICES
+
+Spring Security 6/7 (Boot 4). Because there is no login, configure a permissive SecurityFilterChain: permitAll on /api/v1/**, /ws/**, /actuator/health, / and static assets; disable form login/basic. CSRF: keep enabled for browser POSTs from the Thymeleaf web POC (HTMX sends the token via the hx:post namespace — Task 20) but ignore CSRF on /api/v1/** and /ws/** which serve programmatic/WebSocket clients. Add a strict Content-Security-Policy header (headers().contentSecurityPolicy(...)) compatible with HTMX + Alpine (allow 'self' and the CDN/script sources actually used). Rate limiting with Bucket4j backed by Redis (bucket4j-redis or Lettuce-based), keyed by an anonymous session/device id (header X-Session-Id or cookie); return HTTP 429 with a typed error when exceeded. CORS: allowedOrigins from a configurable list.
+
+CONTEXT
+
+Protects the cost-sensitive LLM/TTS endpoints (PRD risk "Coût API explose": rate limiting + golden dictionary) and hardens the public POC without adding login friction (PRD UX rule "0 friction au démarrage"). Depends on Redis (Task 08) for distributed rate-limit buckets.
+
+DEPENDENCIES
+
+Requires Task 01 (project setup, security starter, yml) and Task 08 (Redis for Bucket4j buckets).
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 10–14 — owns the security/CORS/rate-limit config files exclusively.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/config/SecurityConfig.java
+Purpose: @Configuration @EnableWebSecurity SecurityFilterChain: permitAll the routes above, disable form/basic login, configure CSRF (enabled for web POC, ignored on /api/v1/** and /ws/**), add the CSP header, register the CORS configuration.
+
+File: src/main/java/com/tuganire/config/CorsConfig.java (or a CorsConfigurationSource bean in SecurityConfig)
+Purpose: Allowed origins from a property (tuganire.security.allowed-origins, default https://tuganire.app, http://localhost:8080), allowed methods GET/POST/PUT, allow the X-Session-Id header.
+
+File: src/main/java/com/tuganire/shared/security/RateLimitFilter.java
+Purpose: A filter/interceptor using Bucket4j (Redis-backed) keyed by device/session id; allow tuganire.rate-limit.requests-per-minute; on exhaustion return 429 with a JSON error body. Add the bucket4j dependency to pom.xml (coordinate: this is the only task editing pom after Task 01 — add just the bucket4j artifacts).
+
+File: src/main/java/com/tuganire/config/RateLimitProperties.java
+Purpose: @ConfigurationProperties(prefix="tuganire.rate-limit") record (requestsPerMinute, requestsPerDay).
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations; ./mvnw -B -ntp clean verify passes SpotBugs/FindSecBugs.
+2. GET / and GET /actuator/health return 200 without authentication.
+3. POST /api/v1/translate is reachable without auth and without a CSRF token (CSRF ignored on /api/v1/**), while a browser POST from the web POC carries a CSRF token.
+4. Exceeding the per-minute limit on an API endpoint returns HTTP 429.
+5. A response from a non-whitelisted Origin is rejected by CORS; tuganire.app and localhost:8080 are allowed.
+6. A Content-Security-Policy header is present on rendered HTML pages and does not break HTMX/Alpine.
+
+NOTES
+
+This task adds the bucket4j dependency to pom.xml — do this carefully and re-run verify, since Task 01 (the only other pom editor) has already completed. No PII or source text is logged at INFO (ARCHI section 10). Audio TTL handling lives with the conversation pipeline (Task 17); here only enforce the cross-cutting policies.

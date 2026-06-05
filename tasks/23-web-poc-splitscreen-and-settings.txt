@@ -1,0 +1,60 @@
+TASK 23 — Web POC: Split-Screen Mode and Settings (Provider Switch, Onboarding)
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): Thymeleaf + layout dialect, Tailwind v4 CSS-first, HTMX + Alpine, all text via message properties (Task 06). Run ./mvnw spotless:apply and npm run build-prod before finishing.
+
+MANDATORY SKILL USAGE (per project owner)
+- Page DESIGN (the split-screen face-to-face layout, the settings screen, the 3-step onboarding) MUST be produced using the ui-ux-pro-max skill.
+- HTML page DEVELOPMENT (Thymeleaf templates and markup) MUST be done using the frontend-design skill.
+- VALIDATION and REVIEW of the produced HTML MUST follow the rules in rules/thymeleaf-rules.mdc (read and comply before declaring done).
+
+ARCHITECTURE
+
+See PRD section 5 (the "split-screen face-à-face" mockup: Mukamana's side rotated 180°), US-04 (mode toggle), US-05 (replay), US-09 (switch TTS provider in settings), and PRD Sprint 5 (split-screen, minimal onboarding 3 screens, switchable TTS provider). Extends the templates from Task 20 (index.html, layout, fragments) and uses GET /api/v1/providers + PUT /api/v1/providers/tts (Task 18) for the provider switch. Add a settings template and an onboarding template under templates/.
+
+TECH STACK AND BEST PRACTICES
+
+Thymeleaf, HTMX 2, Alpine 3, Tailwind 4. Alpine state toggles between "deux boutons" and "split-screen" modes (US-04) without a page reload. The split-screen lower half is visually rotated 180° (CSS transform: rotate(180deg)) so Mukamana reads it across the table (PRD). Settings: a provider <select> populated from GET /api/v1/providers, persisting the choice via PUT /api/v1/providers/tts (hx:post/hx:put with CSRF). Onboarding: 3 lightweight screens, skippable (PRD UX rule "pas de tutoriel obligatoire"). Keep design tokens in static/css/input.css @theme.
+
+CONTEXT
+
+Completes the UX vision (PRD Sprint 5 polish) — the face-to-face mode is the signature interaction, the settings enable the TTS comparator (US-09), and onboarding eases first use without adding friction. Depends on the base web POC (Task 20).
+
+DEPENDENCIES
+
+Requires Task 20 (base web POC templates and WebController) and Task 18 (providers endpoints).
+
+PARALLEL GROUP
+
+Group H (Polish & ship), Wave 8. Runs in parallel with Task 24 (CI/CD + docs) — distinct files (this edits templates/static; Task 24 edits .github/Dockerfile/README). It extends Task 20's templates, so it must run AFTER Task 20 (different wave) — no concurrent edit of the same template.
+
+WHAT TO IMPLEMENT
+
+File: src/main/resources/templates/index.html (extend)
+Purpose: Add the split-screen layout as an alternative Alpine mode; a mode toggle (US-04). Mukamana's panel rotated 180°, each side with its own speak button and transcript area per the PRD mockup.
+
+File: src/main/resources/templates/settings.html (new)
+Purpose: Settings screen: TTS provider selector (from GET /api/v1/providers), language selector, persisted via PUT /api/v1/providers/tts. Text via #{settings.*}.
+
+File: src/main/resources/templates/onboarding.html (new)
+Purpose: 3-step skippable onboarding (#{onboarding.step1/2/3}); a skip control; shown on first visit (Alpine + localStorage flag).
+
+File: src/main/resources/static/js/conversation.js (extend) and a small settings.js
+Purpose: Mode toggle state, split-screen recording for both sides, provider-switch fetch/persist, onboarding visibility via localStorage.
+
+File: src/main/java/com/tuganire/web/WebController.java (extend)
+Purpose: GET /settings and GET /onboarding routes (or render via fragments). Keep thin.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile and npm run build-prod succeed; GET / supports toggling between "deux boutons" and "split-screen" modes without a reload.
+2. In split-screen mode, Mukamana's panel is visually rotated 180° and has its own working speak button.
+3. The settings screen lists TTS providers from GET /api/v1/providers and changing it issues PUT /api/v1/providers/tts (with CSRF) successfully.
+4. The 3-step onboarding shows on first visit, is skippable, and does not reappear after completion/skip (localStorage).
+5. All new strings come from message bundles (FR/RW/EN), no hardcoded text.
+6. New/edited templates comply with rules/thymeleaf-rules.mdc (validated/reviewed against that file).
+
+NOTES
+
+Use ui-ux-pro-max for design and frontend-design for the HTML, then review against rules/thymeleaf-rules.mdc — mandatory per the project owner. Do not break the Task 20 two-button flow when adding the toggle. The TTS provider switch is runtime (ADR-004); confirm PUT /api/v1/providers/tts reflects immediately on the next synthesis.

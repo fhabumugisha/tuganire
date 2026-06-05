@@ -231,6 +231,11 @@ html {
     }
     .animate-slide-in-up { animation: slideInUp 0.3s ease-out; }
 
+    /* Bottom panel: soft upward shadow for the fixed voice-button bar */
+    .panel-shadow-top {
+        box-shadow: 0 -4px 24px -6px rgba(0, 0, 0, 0.08);
+    }
+
     /* Tabular figures helper */
     .num-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
@@ -333,6 +338,42 @@ html {
     .group:focus-visible .top-sweep::before { left: 100%; }
 }
 
+/* ========================================
+   Listening ring animation
+   3 concentric rings expand + fade out,
+   staggered to give a ripple effect.
+   Color driven by --ring-color CSS var
+   set inline by Alpine (:style binding).
+   ======================================== */
+@keyframes listening-ping {
+    0%   { transform: scale(1);   opacity: 0.75; }
+    80%  { transform: scale(2.4); opacity: 0; }
+    100% { transform: scale(2.4); opacity: 0; }
+}
+
+.listening-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background-color: var(--ring-color, var(--color-primary));
+    animation: listening-ping 1600ms cubic-bezier(0.2, 0, 0.4, 1) infinite;
+}
+
+.listening-ring-1 { animation-delay: 0ms;    opacity: 0.6; }
+.listening-ring-2 { animation-delay: 400ms;  opacity: 0.4; }
+.listening-ring-3 { animation-delay: 800ms;  opacity: 0.25; }
+
+/* ========================================
+   Conversation bubble utilities
+   ======================================== */
+.bubble-fr {
+    @apply flex justify-start mb-2;
+}
+
+.bubble-rw {
+    @apply flex justify-end mb-4;
+}
+
 /* Skip link */
 .skip-link {
     position: absolute;
@@ -356,4 +397,39 @@ html {
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* ========================================
+   Split-screen mode utilities
+   ======================================== */
+
+/* The amber hairline that bridges the two speaker panels */
+.split-divider {
+    flex-shrink: 0;
+    height: 2.5rem;
+    padding: 0 1rem;
+}
+
+.split-divider-line {
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--color-accent) 20%,
+        var(--color-accent) 80%,
+        transparent
+    );
+    opacity: 0.4;
+}
+
+/* RW panel (Mukamana) — subtle amber tint */
+.split-panel-rw {
+    background: color-mix(in oklab, var(--color-accent) 3%, var(--color-base-100));
+    min-height: 0;
+}
+
+/* FR panel (Doctor) — subtle indigo tint */
+.split-panel-fr {
+    background: color-mix(in oklab, var(--color-primary) 3%, var(--color-base-100));
+    min-height: 0;
 }

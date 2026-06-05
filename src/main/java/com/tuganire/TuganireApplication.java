@@ -1,10 +1,11 @@
 package com.tuganire;
 
-import org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
-@SpringBootApplication(exclude = {PgVectorStoreAutoConfiguration.class})
+@SpringBootApplication
+@ConfigurationPropertiesScan
 public class TuganireApplication {
 
     public static void main(String[] args) {

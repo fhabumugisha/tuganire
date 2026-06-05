@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{settings.title}">Paramètres</title>
+</head>
+<body>
+
+<div layout:fragment="content"
+     x-data="settings()"
+     x-init="init()"
+     class="flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <!--
+        i18n bridge: surface a small subset of message strings to settings.js so
+        the JS layer never hardcodes any user-facing text. Keep this block close
+        to where settings() is bootstrapped.
+    -->
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.tuganireI18n = window.tuganireI18n || {};
+        Object.assign(window.tuganireI18n, {
+            'settings.saved.field':            /*[[#{settings.saved.field}]]*/ 'Saved',
+            'settings.saving':                 /*[[#{settings.saving}]]*/ 'Saving…',
+            'settings.saveError.frenchStt':    /*[[#{settings.saveError.frenchStt}]]*/ 'Failed to save the French transcription engine.',
+            'settings.saveError.temperature':  /*[[#{settings.saveError.temperature}]]*/ 'Failed to save the temperature.',
+            'settings.saveError.model':        /*[[#{settings.saveError.model}]]*/ 'Failed to save the translation model.',
+            'settings.saveError.tts':          /*[[#{settings.saveError.tts}]]*/ 'Failed to save the text-to-speech provider.'
+        });
+        /*]]>*/
+    </script>
+
+    <div class="flex-1 overflow-y-auto px-4 py-6 max-w-2xl mx-auto w-full">
+
+        <!-- Page heading -->
+        <h1 class="text-xl font-semibold text-base-content mb-6" th:text="#{settings.title}">
+            Paramètres
+        </h1>
+
+        <!--
+            Global aria-live region. C12: re-keyed on feedback.ts so assistive tech
+            re-announces every event (success / error / saving) even when the same
+            field reports back-to-back results. Visually hidden — visible feedback
+            lives next to each control below.
+        -->
+        <div :key="feedback.ts"
+             class="sr-only"
+             role="status"
+             aria-live="polite"
+             aria-atomic="true"
+             x-text="feedback.message"></div>
+
+        <!-- Settings form -->
+        <form th:aria-label="#{aria.settingsForm}"
+              @submit.prevent>
+
+            <!-- ── Section: Voice ──────────────────────────────────────────── -->
+            <section class="mb-6">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                    th:text="#{settings.section.voice}">
+                    Voix
+                </h2>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+
+                        <!-- TTS provider select -->
+                        <div class="form-control">
+                            <label class="label pb-1"
+                                   th:for="ttsProvider">
+                                <span class="label-text font-medium"
+                                      th:text="#{settings.ttsProvider.label}">
+                                    Fournisseur de synthèse vocale (TTS)
+                                </span>
+                            </label>
+
+                            <!-- Skeleton while Alpine fetches GET /api/v1/providers in init() -->
+                            <div id="tts-provider-container"
+                                 x-show="providers.length === 0 && !providerError"
+                                 class="flex items-center gap-2 text-base-content/40 text-sm py-2">
+                                <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                                <span th:text="#{status.translating}">Chargement...</span>
+                            </div>
+
+                            <!-- Select rendered by Alpine once providers are loaded.
+                                 B6: auto-saves on @change. -->
+                            <select id="ttsProvider"
+                                    name="ttsProvider"
+                                    class="select select-bordered w-full mt-1"
+                                    x-show="providers.length > 0"
+                                    x-cloak
+                                    x-model="selectedProvider"
+                                    @change="saveTtsProvider()"
+                                    th:aria-label="#{settings.ttsProvider.label}">
+                                <option value="" th:text="#{settings.ttsProvider.placeholder}" disabled>
+                                    Choisir un fournisseur…
+                                </option>
+                                <template x-for="p in providers" :key="p.id">
+                                    <option :value="p.id" x-text="p.name"></option>
+                                </template>
+                            </select>
+
+                            <!-- Provider load error -->
+                            <p x-show="providerError"
+                               x-cloak
+                               class="text-xs text-error mt-1"
+                               th:text="#{settings.providerError}">
+                                Impossible de charger les fournisseurs.
+                            </p>
+
+                            <!-- Per-control feedback (saving / saved / error). C12 -->
+                            <div class="mt-1 min-h-[1.25rem] text-xs"
+                                 :key="feedback.ts">
+                                <span x-show="isFeedback('tts','saving')" x-cloak
+                                      class="inline-flex items-center gap-1 text-base-content/60">
+                                    <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('tts','success')" x-cloak
+                                      class="inline-flex items-center gap-1 text-success font-medium">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none"
+                                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                                    </svg>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('tts','error')" x-cloak
+                                      class="inline-flex items-center gap-1 text-error font-medium"
+                                      role="alert">
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Section: Transcription (French STT engine) ──────────────── -->
+            <section class="mb-6">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                    th:text="#{settings.section.transcription}">
+                    Transcription
+                </h2>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="form-control">
+                            <span class="label-text font-medium mb-2" th:text="#{settings.stt.label}">
+                                Transcription du français
+                            </span>
+
+                            <!-- Web Speech API option -->
+                            <label class="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer
+                                          transition-colors duration-150 mb-2"
+                                   :class="frenchStt === 'webspeech' ? 'border-primary bg-primary/5' : 'hover:bg-base-200'">
+                                <input type="radio" name="frenchStt" value="webspeech"
+                                       class="radio radio-primary radio-sm mt-0.5"
+                                       x-model="frenchStt"
+                                       @change="saveFrenchStt()">
+                                <span class="flex flex-col">
+                                    <span class="text-sm font-medium" th:text="#{settings.stt.webspeech}">
+                                        Navigateur (Web Speech API)
+                                    </span>
+                                    <span class="text-xs text-base-content/60" th:text="#{settings.stt.webspeech.desc}">
+                                        Rapide, idéal pour un français courant. Chrome uniquement.
+                                    </span>
+                                </span>
+                            </label>
+
+                            <!-- OpenAI Whisper option -->
+                            <label class="flex items-start gap-3 rounded-lg border border-base-300 p-3 cursor-pointer
+                                          transition-colors duration-150"
+                                   :class="frenchStt === 'openai' ? 'border-primary bg-primary/5' : 'hover:bg-base-200'">
+                                <input type="radio" name="frenchStt" value="openai"
+                                       class="radio radio-primary radio-sm mt-0.5"
+                                       x-model="frenchStt"
+                                       @change="saveFrenchStt()">
+                                <span class="flex flex-col">
+                                    <span class="text-sm font-medium" th:text="#{settings.stt.openai}">
+                                        OpenAI (Whisper + correction)
+                                    </span>
+                                    <span class="text-xs text-base-content/60" th:text="#{settings.stt.openai.desc}">
+                                        Plus robuste aux accents ; corrige le français avant la traduction.
+                                    </span>
+                                </span>
+                            </label>
+
+                            <!-- Per-control feedback. C12 -->
+                            <div class="mt-2 min-h-[1.25rem] text-xs"
+                                 :key="feedback.ts">
+                                <span x-show="isFeedback('frenchStt','success')" x-cloak
+                                      class="inline-flex items-center gap-1 text-success font-medium">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none"
+                                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                                    </svg>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('frenchStt','error')" x-cloak
+                                      class="inline-flex items-center gap-1 text-error font-medium"
+                                      role="alert">
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Section: Kinyarwanda A/B comparison mode ────────────────── -->
+            <section class="mb-6">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                    th:text="#{settings.section.compare}">
+                    Comparaison
+                </h2>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   class="toggle toggle-primary toggle-sm mt-0.5"
+                                   x-model="compareRw"
+                                   @change="saveCompareRw()">
+                            <span class="flex flex-col">
+                                <span class="text-sm font-medium" th:text="#{settings.compare.label}">
+                                    Mode comparaison (kinyarwanda)
+                                </span>
+                                <span class="text-xs text-base-content/60" th:text="#{settings.compare.desc}">
+                                    Chaque phrase kinyarwanda est nettoyée par deux modèles ; choisissez la meilleure.
+                                </span>
+                            </span>
+                        </label>
+
+                        <!-- Per-control feedback -->
+                        <div class="mt-2 min-h-[1.25rem] text-xs" :key="feedback.ts">
+                            <span x-show="isFeedback('compareRw','success')" x-cloak
+                                  class="inline-flex items-center gap-1 text-success font-medium">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none"
+                                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                                </svg>
+                                <span x-text="feedback.message"></span>
+                            </span>
+                            <span x-show="isFeedback('compareRw','error')" x-cloak
+                                  class="inline-flex items-center gap-1 text-error font-medium" role="alert">
+                                <span x-text="feedback.message"></span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Section: Translation (model + GPT-4o temperature) ──────── -->
+            <section class="mb-6">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                    th:text="#{settings.section.translation}">
+                    Traduction
+                </h2>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4 gap-4">
+
+                        <!-- Translation model select. C10: loading skeleton +
+                             empty/error state mirror the TTS-section pattern. -->
+                        <div class="form-control">
+                            <label class="label-text font-medium mb-1 block" for="translation-model"
+                                   th:text="#{settings.model.label}">
+                                Modèle de traduction
+                            </label>
+
+                            <!-- Loading skeleton (no models yet, no error) -->
+                            <div x-show="translationModels.length === 0 && !translationModelError"
+                                 class="flex items-center gap-2 text-base-content/40 text-sm py-2">
+                                <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                                <span th:text="#{status.translating}">Chargement...</span>
+                            </div>
+
+                            <!-- The select is only rendered once models are loaded -->
+                            <select id="translation-model" name="translation-model"
+                                    class="select select-bordered select-sm w-full"
+                                    x-show="translationModels.length > 0 && !translationModelError"
+                                    x-cloak
+                                    x-model="selectedModel"
+                                    @change="saveTranslationModel()"
+                                    th:aria-label="#{settings.model.label}">
+                                <template x-for="m in translationModels" :key="m.id">
+                                    <option :value="m.id" x-text="m.label"></option>
+                                </template>
+                            </select>
+
+                            <!-- Load error: shown in place of the dropdown -->
+                            <p x-show="translationModelError"
+                               x-cloak
+                               class="text-xs text-error mt-1"
+                               role="alert"
+                               th:text="#{settings.model.loadError}">
+                                Impossible de charger les modèles de traduction.
+                            </p>
+
+                            <p class="text-xs text-base-content/60 mt-2" th:text="#{settings.model.desc}">
+                                Modèle utilisé pour traduire du français vers le kinyarwanda. Le fournisseur suit le modèle choisi.
+                            </p>
+
+                            <!-- Per-control feedback. C12 -->
+                            <div class="mt-1 min-h-[1.25rem] text-xs"
+                                 :key="feedback.ts">
+                                <span x-show="isFeedback('model','saving')" x-cloak
+                                      class="inline-flex items-center gap-1 text-base-content/60">
+                                    <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('model','success')" x-cloak
+                                      class="inline-flex items-center gap-1 text-success font-medium">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none"
+                                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                                    </svg>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('model','error')" x-cloak
+                                      class="inline-flex items-center gap-1 text-error font-medium"
+                                      role="alert">
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="divider my-0"></div>
+
+                        <!-- Temperature slider. S3 + C11:
+                             - aria-describedby points at the helper text below
+                             - aria-valuetext gives screen readers the live value with scale context
+                             - badge has aria-live=polite so it re-announces on drag
+                             - @input (not @change) so debouncing in saveTemperature() can fire
+                               on the LAST drag movement -->
+                        <div class="form-control">
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="label-text font-medium" for="temperature"
+                                       th:text="#{settings.temperature.label}">
+                                    Température (GPT-4o)
+                                </label>
+                                <span class="badge badge-primary badge-sm font-mono"
+                                      aria-live="polite"
+                                      x-text="temperature.toFixed(1)">0.3</span>
+                            </div>
+                            <input id="temperature" name="temperature" type="range"
+                                   class="range range-primary range-sm"
+                                   min="0" max="1" step="0.1"
+                                   x-model.number="temperature"
+                                   @input="saveTemperature()"
+                                   aria-describedby="temperature-help"
+                                   :aria-valuetext="`${temperature.toFixed(1)} / 1.0`"
+                                   th:aria-label="#{settings.temperature.label}">
+                            <div class="flex justify-between text-xs text-base-content/40 px-1 mt-1">
+                                <span th:text="#{settings.temperature.precise}">Précis</span>
+                                <span th:text="#{settings.temperature.creative}">Créatif</span>
+                            </div>
+                            <p id="temperature-help"
+                               class="text-xs text-base-content/60 mt-2"
+                               th:text="#{settings.temperature.desc}">
+                                Plus bas = traductions plus fidèles et constantes ; plus haut = plus de variété.
+                            </p>
+
+                            <!-- Per-control feedback. C12 -->
+                            <div class="mt-1 min-h-[1.25rem] text-xs"
+                                 :key="feedback.ts">
+                                <span x-show="isFeedback('temperature','saving')" x-cloak
+                                      class="inline-flex items-center gap-1 text-base-content/60">
+                                    <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('temperature','success')" x-cloak
+                                      class="inline-flex items-center gap-1 text-success font-medium">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none"
+                                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                                    </svg>
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                                <span x-show="isFeedback('temperature','error')" x-cloak
+                                      class="inline-flex items-center gap-1 text-error font-medium"
+                                      role="alert">
+                                    <span x-text="feedback.message"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Section: Interface ─────────────────────────────────────── -->
+            <section class="mb-6">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3"
+                    th:text="#{settings.section.interface}">
+                    Interface
+                </h2>
+                <div class="card bg-base-100 border border-base-300 shadow-sm">
+                    <div class="card-body p-4">
+
+                        <!-- Language selector (UI language) -->
+                        <div class="form-control">
+                            <label class="label pb-1" th:for="uiLanguage">
+                                <span class="label-text font-medium"
+                                      th:text="#{settings.language.label}">
+                                    Langue de l'interface
+                                </span>
+                            </label>
+                            <div class="flex gap-2 flex-wrap">
+                                <!-- FR -->
+                                <a th:href="@{/(lang=fr)}"
+                                   class="btn btn-sm"
+                                   hreflang="fr"
+                                   :class="currentLocale === 'fr' ? 'btn-primary' : 'btn-ghost border border-base-300'"
+                                   th:aria-label="#{lang.fr}"
+                                   th:text="#{lang.fr}">
+                                    Français
+                                </a>
+                                <!-- EN -->
+                                <a th:href="@{/(lang=en)}"
+                                   class="btn btn-sm"
+                                   hreflang="en"
+                                   :class="currentLocale === 'en' ? 'btn-primary' : 'btn-ghost border border-base-300'"
+                                   th:aria-label="#{lang.en}"
+                                   th:text="#{lang.en}">
+                                    English
+                                </a>
+                                <!-- RW -->
+                                <a th:href="@{/(lang=rw)}"
+                                   class="btn btn-sm"
+                                   hreflang="rw"
+                                   :class="currentLocale === 'rw' ? 'btn-primary' : 'btn-ghost border border-base-300'"
+                                   th:aria-label="#{lang.rw}"
+                                   th:text="#{lang.rw}">
+                                    Ikinyarwanda
+                                </a>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- B6: no batched save button. All controls auto-save on change. -->
+
+        </form>
+
+        <!-- Back link -->
+        <div class="mt-4 text-center">
+            <a th:href="@{/}"
+               class="text-sm text-base-content/50 hover:text-primary transition-colors duration-150">
+                ← <span th:text="#{app.title}">Tuganire</span>
+            </a>
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Page scripts ───────────────────────────────────────────────────────── -->
+<th:block layout:fragment="scripts">
+    <script th:src="@{/js/settings.js}"></script>
+</th:block>
+
+</body>
+</html>

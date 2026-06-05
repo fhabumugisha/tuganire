@@ -1,0 +1,58 @@
+TASK 05 — Flyway Migrations, JPA Entities and Repositories
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): JPA ddl-auto is none — every schema change is a Flyway migration. Entities use Lombok (@Getter/@Setter or @Data plus @Builder, @NoArgsConstructor/@AllArgsConstructor as appropriate). Repositories are Spring Data JPA interfaces. Entities are never returned from controllers. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5 ("Le dictionnaire d'or — Modèle de données") for the golden_dictionary DDL and the GoldenEntry entity, and section 12 (test datasets). Migrations live in src/main/resources/db/migration. Entities and repositories live in com.tuganire.golden and com.tuganire.feedback. The golden dictionary stores ~50 native-validated phrases (PRD acceptance criterion: ≥ 50 entries); feedback stores the 👍/👎 loop data.
+
+TECH STACK AND BEST PRACTICES
+
+PostgreSQL 16. Flyway with flyway-database-postgresql (required for Postgres support in Flyway 10+/Boot 4). Hibernate 6 (JPA). For the alternatives TEXT[] column use a Hibernate array mapping (e.g. @JdbcTypeCode(SqlTypes.ARRAY) on a String[] field, or @Column(columnDefinition="text[]")) — do not pull in a third-party StringArrayType library if Hibernate 6 native array support suffices. Use BIGSERIAL primary keys (@GeneratedValue(strategy = IDENTITY)). Timestamps as Instant mapped to TIMESTAMP.
+
+CONTEXT
+
+This task creates the persistent backbone: the golden dictionary that lets the pipeline skip the LLM for known phrases (ARCHI section 5, PRD pipeline) and absorbs ~40% of requests (PRD risk mitigation), plus the feedback store for native corrections (US-06, success metric "≥ 100 corrections in month 1"). It unblocks Task 11 (GoldenDictionaryService) and Task 09 (FeedbackService).
+
+DEPENDENCIES
+
+Requires Task 01 (project setup) to be complete.
+
+PARALLEL GROUP
+
+Group B (Contracts), Wave 2. Runs in parallel with Task 04 (DTOs) and Task 06 (i18n) — distinct files.
+
+WHAT TO IMPLEMENT
+
+File: src/main/resources/db/migration/V1__create_golden_dictionary.sql
+Purpose: Create golden_dictionary exactly per ARCHI section 5 (id BIGSERIAL PK, source_text, source_lang VARCHAR(2), target_text, target_lang VARCHAR(2), alternatives TEXT[], context VARCHAR(100), error_category VARCHAR(50), validated_by, validated_at, usage_count, score_avg) plus indexes idx_golden_source (source_lang, source_text) and idx_golden_context (context).
+
+File: src/main/resources/db/migration/V2__create_feedback.sql
+Purpose: Create feedback table: id BIGSERIAL PK, session_id, translation_id, source_text TEXT, translated_text TEXT, type VARCHAR(20) NOT NULL, suggested_correction TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW(). Index on (type) and (session_id).
+
+File: src/main/resources/db/migration/V3__seed_golden_dictionary.sql
+Purpose: Seed at least 50 FR→RW entries (context: transport/marché/restaurant/santé/social) validated_by 'native-mvp'. Use the corrections from ARCHI's PluralRespectRule examples and PRD sections 4 and 6 as a starting set. Mark error_category where relevant (INFIX_PRONOUN, INVENTION, PLURAL_RESPECT, ...).
+
+File: src/main/java/com/tuganire/golden/GoldenEntry.java
+Purpose: @Entity @Table(name="golden_dictionary") mapping all columns (alternatives as String[]). Lombok getters/setters + builder.
+
+File: src/main/java/com/tuganire/golden/GoldenDictionaryRepo.java
+Purpose: extends JpaRepository<GoldenEntry, Long>; query method Optional<GoldenEntry> findFirstBySourceLangAndTargetLangAndSourceTextIgnoreCase(String src, String tgt, String sourceText).
+
+File: src/main/java/com/tuganire/feedback/Feedback.java and FeedbackRepo.java
+Purpose: @Entity Feedback mapping the feedback table (Lombok); FeedbackRepo extends JpaRepository<Feedback, Long> with countByType(...) for metrics.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. With docker-compose Postgres running, Flyway applies V1, V2 and V3 cleanly on app start (no failed migration).
+3. golden_dictionary has the two indexes and an alternatives column of type text[].
+4. V3 inserts at least 50 rows into golden_dictionary.
+5. GoldenEntry maps alternatives to a Java String[] without a third-party type library.
+6. GoldenDictionaryRepo exposes a case-insensitive lookup by (sourceLang, targetLang, sourceText) returning Optional.
+
+NOTES
+
+Migrations are immutable once applied — if you must change a migration before it has ever run in CI, edit in place; never edit an applied migration. This task OWNS db/migration; no other task adds migrations. The 50 seed entries can be a reasonable starter set generated from PRD examples; a native speaker refines them later (out of scope).

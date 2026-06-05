@@ -1,0 +1,55 @@
+TASK 04 — Domain DTOs and Conversation Events
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): DTOs are Java records; never expose entities. Use JSpecify nullability annotations. No Lombok needed on records. Run ./mvnw spotless:apply before compiling. Keep these types free of framework dependencies so they survive the Spring AI M4→GA migration (ADR-008).
+
+ARCHITECTURE
+
+See ARCHI.md section 4 ("Architecture Java 21 — Code structurant"), which gives the exact records and the sealed interface. Place translation DTOs in com.tuganire.translation, the conversation event hierarchy in com.tuganire.conversation, the feedback DTO + enum in com.tuganire.feedback. These contracts are consumed by every later backend task (services, controllers, WebSocket).
+
+TECH STACK AND BEST PRACTICES
+
+Java 21 records and sealed interfaces. JSpecify: import org.jspecify.annotations.NonNull / Nullable and annotate fields that may be absent (e.g. detectedLanguage, alternativeTranslation) as @Nullable, the rest @NonNull. Add compact constructors with Objects.requireNonNull validation where ARCHI shows it (TranslationRequest). Do NOT import com.fasterxml.jackson.* — Jackson 3 (tools.jackson.*) is the serializer in Spring Boot 4, but these records need no Jackson annotations.
+
+CONTEXT
+
+These are the shared contracts of the whole translation pipeline (PRD section 6, ARCHI section 4 and 6). TranslationRequest/Response flow through TranslationService; ConversationEvent is the sealed WebSocket event model enabling exhaustive pattern-matching; FeedbackRequest/FeedbackType drive the 👍/👎 loop (US-06). Defining them first unblocks the provider interfaces (Task 07) and every feature service.
+
+DEPENDENCIES
+
+Requires Task 01 (project setup) to be complete.
+
+PARALLEL GROUP
+
+Group B (Contracts), Wave 2. Runs in parallel with Task 05 (Flyway/entities) and Task 06 (i18n) — distinct files.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/translation/TranslationRequest.java
+Purpose: Input record. Fields: String sourceText, Locale sourceLanguage, Locale targetLanguage, String sessionId. Compact constructor requireNonNull on sourceText, sourceLanguage, targetLanguage.
+
+File: src/main/java/com/tuganire/translation/TranslationResponse.java
+Purpose: Output record. Fields per ARCHI: @NonNull String originalText, @NonNull String translatedText, @Nullable String detectedLanguage, double confidence, boolean fromCache, boolean fromGoldenDictionary, List<String> appliedCorrections, @NonNull Instant translatedAt. Add static factory methods fromCache(...), fromGoldenDictionary(...), fromLlm(originalText, translatedText, appliedCorrections) that set the boolean flags and translatedAt = Instant.now().
+
+File: src/main/java/com/tuganire/translation/StructuredTranslation.java
+Purpose: Record for Spring AI structured output: String text, double confidence, List<String> appliedCorrections, @Nullable String alternativeTranslation.
+
+File: src/main/java/com/tuganire/conversation/ConversationEvent.java
+Purpose: sealed interface permitting records SpeechStarted, PartialTranscript, FinalTranscript, TranslationReady, AudioReady, ErrorOccurred (exact fields from ARCHI section 4). Include a static String describe(ConversationEvent) using an exhaustive switch (pattern matching) as shown.
+
+File: src/main/java/com/tuganire/feedback/FeedbackRequest.java and FeedbackType.java
+Purpose: record FeedbackRequest(String sessionId, String translationId, FeedbackType type, String suggestedCorrection); enum FeedbackType { THUMBS_UP, THUMBS_DOWN, CORRECTION_PROPOSED }.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. ConversationEvent is a sealed interface with exactly the six permitted record subtypes, and describe(...) compiles as an exhaustive switch with no default branch.
+3. TranslationRequest's compact constructor throws NullPointerException when sourceText, sourceLanguage or targetLanguage is null (cover with a quick unit assertion if a test exists; otherwise verified by code review).
+4. TranslationResponse exposes static factories fromCache, fromGoldenDictionary and fromLlm.
+5. Nullable fields (detectedLanguage, alternativeTranslation) carry @Nullable; required fields carry @NonNull (JSpecify imports).
+6. No file imports com.fasterxml.jackson.*.
+
+NOTES
+
+Keep these records framework-agnostic. Spring AI's .entity(StructuredTranslation.class) (Task 10) will map LLM JSON onto StructuredTranslation, so its field names must match the prompt's requested JSON keys. ProcessedTranslation and the provider interfaces live in Task 07, not here.

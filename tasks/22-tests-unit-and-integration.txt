@@ -1,0 +1,58 @@
+TASK 22 — Tests: Unit, Integration and Semantic Regression
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): tests under src/test/java; unit tests (Surefire) and *IT integration tests (Failsafe) with Testcontainers Postgres + Redis; ./mvnw verify runs the full pipeline (unit + IT + SpotBugs/FindSecBugs + JaCoCo). NOTE: legacy template tests lived under com.saaskit and were removed in Task 01 — write all new tests under com.tuganire. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 12 ("Stratégie de tests": 80% unit / 15% integration / 5% e2e; focus on PostProcessor rules; Testcontainers Redis+Postgres; WireMock for OpenAI; semantic regression on the 65-phrase corpus, build fails if quality drops > 5%). Test datasets: test-data/golden-dictionary.csv, test-data/llm-errors-corpus.csv, test-data/edge-cases.csv. The base integration class is AbstractIntegrationTest (Testcontainers). Profiles application-test.yml (unit) and application-it.yml (IT).
+
+TECH STACK AND BEST PRACTICES
+
+JUnit 5, Mockito, AssertJ, Spring Test, Testcontainers (Postgres + Redis), WireMock (mock OpenAI/Anthropic HTTP). Mock the Spring AI ChatClient/ChatModel and the transcription/speech models in unit tests — never hit the real network. Use @SpringBootTest + Testcontainers for ITs. The semantic-regression IT loads the 65-phrase corpus, runs each through TranslationService (with the LLM stubbed/recorded), scores against expected native corrections, and fails if the aggregate score regresses > 5% vs a stored baseline.
+
+CONTEXT
+
+Quality is the product (ADR-005). The post-processor rules and the orchestration are the highest-risk logic; this task locks them with tests and adds the regression gate that protects translation quality on every pipeline change (PRD: TranslationQualityIT). Depends on the post-processor (Task 12), TranslationService (Task 16) and controllers (Task 18).
+
+DEPENDENCIES
+
+Requires Task 12 (post-processor rules), Task 16 (TranslationService) and Task 18 (controllers). Reuses entities/repos from Task 05.
+
+PARALLEL GROUP
+
+Group G (Clients & delivery), Wave 7. Runs in parallel with Tasks 19, 20 and 21 — owns src/test/** and test-data/** exclusively.
+
+WHAT TO IMPLEMENT
+
+File: src/test/java/com/tuganire/postprocessor/rules/PluralRespectRuleTest.java (+ one test class per rule: InfixPronounRuleTest, AntiPolitenessStackingRuleTest, AntiHallucinationRuleTest, AntiSyntacticCalqueRuleTest)
+Purpose: Unit-test each rule: known input→corrected output, tgt!="rw" leaves text unchanged, changed flag correctness.
+
+File: src/test/java/com/tuganire/translation/TranslationServiceTest.java
+Purpose: Mockito unit test of TranslationServiceImpl with mocked cache/normalizer/golden/llm/postprocessor: verifies cache-hit short-circuit, golden-hit short-circuit (no LLM call), LLM+post-process path, and LLM fallback on default-provider failure.
+
+File: src/test/java/com/tuganire/integration/AbstractIntegrationTest.java
+Purpose: Base @SpringBootTest class starting Testcontainers Postgres + Redis, profile it.
+
+File: src/test/java/com/tuganire/integration/EndToEndIT.java
+Purpose: Full pipeline IT: POST /api/v1/translate (LLM mocked via WireMock or a test LlmProvider) → asserts a corrected translation and that a feedback POST persists.
+
+File: src/test/java/com/tuganire/integration/TranslationQualityIT.java
+Purpose: Load test-data/llm-errors-corpus.csv (65 phrases + native corrections), run through the pipeline with a deterministic stubbed LLM, compute an aggregate quality score, compare to a committed baseline, fail if regression > 5%.
+
+File: src/test/resources/test-data/golden-dictionary.csv, llm-errors-corpus.csv, edge-cases.csv and application-test.yml, application-it.yml
+Purpose: Datasets (seeded from PRD sections 4/6) and test profiles.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw test runs all unit tests green; each of the 5 rules has a dedicated test class.
+2. TranslationServiceTest proves the cache-hit and golden-hit paths do NOT call the LLM (Mockito verify(llm, never())).
+3. ./mvnw verify starts Testcontainers Postgres + Redis and runs EndToEndIT and TranslationQualityIT green.
+4. No test performs a real network call to OpenAI/Anthropic (mocked/stubbed).
+5. TranslationQualityIT loads ≥ 65 corpus phrases and fails the build when aggregate quality regresses > 5% vs the baseline.
+6. JaCoCo coverage report is generated; post-processor package coverage is high (rules are pure functions).
+
+NOTES
+
+All new tests use the com.tuganire package (the com.saaskit legacy tests are gone). Keep the LLM deterministic in tests (a fixed-response test LlmProvider or recorded WireMock stubs) so TranslationQualityIT is stable. The quality baseline is a committed file; update it intentionally (with review) when rules legitimately change outputs.

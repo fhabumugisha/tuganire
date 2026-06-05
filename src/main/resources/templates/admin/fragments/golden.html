@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+    Golden-dictionary entries table fragment.
+    Re-rendered and swapped into #golden-table after each create / update / delete (HTMX).
+
+    Parameters (model attributes):
+      - goldenEntries : List<GoldenEntry>, newest first
+-->
+<div th:fragment="table" id="golden-table">
+
+    <!-- Empty state -->
+    <div th:if="${#lists.isEmpty(goldenEntries)}"
+         class="text-center text-base-content/50 text-sm py-8"
+         th:text="#{admin.golden.empty}">
+        Aucune entrée pour le moment.
+    </div>
+
+    <!-- Entries table -->
+    <div th:unless="${#lists.isEmpty(goldenEntries)}" class="overflow-x-auto">
+        <table class="table table-sm">
+            <thead>
+            <tr>
+                <th th:text="#{admin.golden.col.source}">Source</th>
+                <th th:text="#{admin.golden.col.target}">Traduction</th>
+                <th th:text="#{admin.golden.col.context}">Contexte</th>
+                <th th:text="#{admin.golden.col.validatedBy}">Validé par</th>
+                <th th:text="#{admin.golden.col.usage}">Usages</th>
+                <th class="text-right" th:text="#{admin.golden.col.actions}">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="entry : ${goldenEntries}"
+                x-data="{ editing: false }">
+
+                <!-- Display row -->
+                <td x-show="!editing">
+                    <span class="badge badge-ghost badge-xs mr-1"
+                          th:text="${entry.sourceLang}">fr</span>
+                    <span th:text="${entry.sourceText}">bonjour</span>
+                </td>
+                <td x-show="!editing">
+                    <span class="badge badge-ghost badge-xs mr-1" th:text="${entry.targetLang}">rw</span>
+                    <span th:text="${entry.targetText}">muraho</span>
+                </td>
+                <td x-show="!editing" class="text-base-content/60"
+                    th:text="${entry.context} ?: '—'">—</td>
+                <td x-show="!editing" class="text-base-content/60"
+                    th:text="${entry.validatedBy}">admin</td>
+                <td x-show="!editing" class="text-base-content/60"
+                    th:text="${entry.usageCount}">0</td>
+                <td x-show="!editing" class="text-right whitespace-nowrap">
+                    <button type="button" class="btn btn-ghost btn-xs"
+                            @click="editing = true"
+                            th:text="#{admin.action.edit}">Modifier</button>
+                    <!-- Delete: HTMX POST returns the refreshed table fragment -->
+                    <form class="inline"
+                          th:attr="hx-post=@{/admin/golden/{id}/delete(id=${entry.id})}"
+                          hx-target="#golden-table"
+                          hx-swap="outerHTML">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <button type="submit"
+                                class="btn btn-ghost btn-xs text-error"
+                                th:attr="hx-confirm=#{admin.golden.confirmDelete}"
+                                th:text="#{admin.action.delete}">Supprimer</button>
+                    </form>
+                </td>
+
+                <!-- Inline edit form (spans the full row) -->
+                <td x-show="editing" x-cloak colspan="6">
+                    <form class="flex flex-wrap items-end gap-2"
+                          th:attr="hx-post=@{/admin/golden/{id}(id=${entry.id})}"
+                          hx-target="#golden-table"
+                          hx-swap="outerHTML">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <input type="text" name="sourceLang" maxlength="2" size="2" required
+                               class="input input-bordered input-xs w-12"
+                               th:value="${entry.sourceLang}" th:aria-label="#{admin.golden.col.source}">
+                        <input type="text" name="sourceText" required
+                               class="input input-bordered input-xs"
+                               th:value="${entry.sourceText}" th:aria-label="#{admin.golden.col.source}">
+                        <input type="text" name="targetLang" maxlength="2" size="2" required
+                               class="input input-bordered input-xs w-12"
+                               th:value="${entry.targetLang}" th:aria-label="#{admin.golden.col.target}">
+                        <input type="text" name="targetText" required
+                               class="input input-bordered input-xs"
+                               th:value="${entry.targetText}" th:aria-label="#{admin.golden.col.target}">
+                        <input type="text" name="context"
+                               class="input input-bordered input-xs"
+                               th:value="${entry.context}" th:placeholder="#{admin.golden.col.context}"
+                               th:aria-label="#{admin.golden.col.context}">
+                        <input type="text" name="validatedBy" required
+                               class="input input-bordered input-xs"
+                               th:value="${entry.validatedBy}" th:placeholder="#{admin.golden.col.validatedBy}"
+                               th:aria-label="#{admin.golden.col.validatedBy}">
+                        <button type="submit" class="btn btn-primary btn-xs"
+                                th:text="#{admin.action.save}">Enregistrer</button>
+                        <button type="button" class="btn btn-ghost btn-xs" @click="editing = false"
+                                th:text="#{admin.action.cancel}">Annuler</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,78 @@
+sequenceDiagram
+    autonumber
+    actor U as Utilisateur
+    participant W as Web POC<br/>(conversation.js)
+    participant S as SessionController<br/>(/api/v1/sessions)
+    participant H as TranslationWebSocketHandler<br/>(/ws/conversation/{id})
+    participant C as ConversationService<br/>(virtual thread)
+    participant STT as SttService
+    participant T as TranslationService
+    participant TTS as TtsService
+    participant AS as AudioStore
+    participant A as AudioController<br/>(/api/v1/audio/{id}.mp3)
+
+    Note over U,A: 1 — Creation de session
+    U->>W: Ouvre l'app, appuie « Parler »
+    W->>S: POST /api/v1/sessions
+    S-->>W: { sessionId, websocketUrl }
+
+    Note over U,A: 2 — Ouverture du WebSocket
+    W->>H: WS upgrade /ws/conversation/{sessionId}
+    activate H
+    H->>H: afterConnectionEstablished()<br/>cree SessionState (buffer + ReentrantLock)
+    H-->>W: connexion etablie
+
+    Note over U,A: 3 — Capture audio (par tour de parole)
+    loop tant que l'utilisateur parle
+        U->>W: parle (PCM 16 kHz mono)
+        W->>H: frame 0x01 — chunk audio
+        H->>H: append au audioBuffer (sous sendLock)
+    end
+    opt keepalive
+        W->>H: frame 0x03 — ping
+        H-->>W: "pong"
+    end
+
+    Note over U,A: 4 — Fin de tour: pipeline STT - Traduction - TTS
+    W->>H: frame 0x02 — metadata { srcLang, tgtLang, endOfTurn:true }
+    H->>H: draine le buffer (snapshot sous lock)
+    H->>C: processAudioStreaming(audio, src, tgt, sessionId, sink)
+    activate C
+    Note right of C: s'execute sur un<br/>virtual thread
+
+    C->>STT: transcribe(audio, src)
+    STT-->>C: transcript
+    C-->>H: ConversationEvent.FinalTranscript
+    H-->>W: JSON { type: FINAL_TRANSCRIPT }
+
+    C->>T: translate(transcript, src, tgt)
+    Note right of T: cache - normalize -<br/>golden dict - LLM (+fallback) -<br/>post-processeur RW - cache
+    T-->>C: TranslationResponse
+    C-->>H: ConversationEvent.TranslationReady
+    H-->>W: JSON { type: TRANSLATION_READY }
+
+    C->>TTS: synthesize(translatedText, tgt)
+    TTS-->>C: audioBytes (mp3)
+    C->>AS: store(audioId, audioBytes)
+    C-->>H: ConversationEvent.AudioReady(audioUrl, durationMs)
+    deactivate C
+    H-->>W: JSON { type: AUDIO_READY, audioUrl }
+
+    Note over U,A: 5 — Lecture de l'audio traduit
+    W->>A: GET /api/v1/audio/{audioId}.mp3
+    A->>AS: getAudio(audioId)
+    AS-->>A: bytes
+    A-->>W: 200 audio/mpeg
+    W-->>U: joue la traduction parlee
+
+    Note over U,A: erreur eventuelle
+    alt echec dans le pipeline
+        C-->>H: ConversationEvent.ErrorOccurred(code, msg)
+        H-->>W: JSON { type: ERROR }
+    end
+
+    Note over U,A: 6 — Fin de session
+    U->>W: ferme l'onglet / quitte
+    W->>H: WS close
+    H->>H: afterConnectionClosed()<br/>sessions.remove(wsSession)
+    deactivate H

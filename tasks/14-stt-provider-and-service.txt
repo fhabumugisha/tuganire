@@ -1,0 +1,54 @@
+TASK 14 — STT Provider (Whisper) and STT Service
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): provider implements the SttProvider interface (Task 07); service interface + *Impl; Lombok; provider-name constants. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5/8 (stt/ package: SttProvider interface, WhisperSttProvider, SttService) and the inverse pipeline in PRD section 6 (RW→FR begins with Whisper STT). The SttProvider interface + SttConfig already exist (Task 07). French STT in the browser uses Web Speech API (Task 20) and does not hit this service; this backend STT primarily serves Kinyarwanda (Mukamana) and any server-side audio path.
+
+TECH STACK AND BEST PRACTICES
+
+Spring AI 2.0 OpenAI transcription: inject the AudioTranscriptionModel (OpenAiAudioTranscriptionModel), wrap audio in a Resource (ByteArrayResource), call transcriptionModel.call(new AudioTranscriptionPrompt(resource, options)).getResult().getOutput(); options model whisper-1, set language when known. Supported input formats include wav/mp3/m4a/webm. Keep Spring AI imports confined to WhisperSttProvider (ADR-008). No synchronized blocks (virtual threads).
+
+CRITICAL LANGUAGE CAVEAT: OpenAI whisper-1 does NOT natively support Kinyarwanda (it covers ~99 languages, Kinyarwanda is not among them). PRD section 4 flags Kinyarwanda STT as 🟡 "à confirmer Sprint 2". Design WhisperSttProvider.supportsLanguage to return false for "rw", and define the interface so an alternative Kinyarwanda STT (the community fine-tune mbazaNLP/Whisper-Small-Kinyarwanda, or Meta MMS ASR served by the Python server) can be added as a second SttProvider implementation later WITHOUT changing callers. For French and English, whisper-1 works well. Log a clear warning when a "rw" transcription is requested but no rw-capable provider is registered.
+
+CONTEXT
+
+STT turns Mukamana's spoken Kinyarwanda into text for translation (US-02, inverse pipeline). Because of the Whisper gap, this task must make the limitation explicit and the architecture extensible rather than silently producing garbage. Feeds the conversation pipeline (Task 17) and the providers endpoint (Task 18).
+
+DEPENDENCIES
+
+Requires Task 07 (SttProvider, SttConfig). Task 01 provides Spring AI transcription config.
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 10, 11, 12, 13, 15 — owns com.tuganire.stt exclusively.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/stt/WhisperSttProvider.java
+Purpose: @Component implementing SttProvider, name()="whisper". supportsLanguage returns true for fr/en, false for rw (with a constant set). transcribe wraps the byte[] in a ByteArrayResource and calls the Spring AI transcription model with the given language; throws or logs a clear warning if asked for an unsupported language.
+
+File: src/main/java/com/tuganire/stt/SttProviderFactory.java
+Purpose: @Service collecting List<SttProvider> by name(); get(String name) and forLanguage(String langCode) selecting the first registered provider that supportsLanguage(lang); throws a clear exception (e.g. BusinessException "no STT provider for rw") if none — making the Kinyarwanda gap visible at runtime rather than hidden.
+
+File: src/main/java/com/tuganire/stt/SttService.java and SttServiceImpl.java
+Purpose: interface String transcribe(byte[] audio, Locale language); Impl picks a provider via SttProviderFactory.forLanguage, increments Micrometer counter tuganire.providers.usage{type="stt",name=...}, returns the transcript.
+
+File: src/main/resources/STT-KINYARWANDA-NOTE.md (short doc)
+Purpose: Document the Whisper Kinyarwanda limitation and the two viable alternatives (mbazaNLP/Whisper-Small-Kinyarwanda fine-tune; Meta MMS ASR facebook/mms-1b-all target_lang=kin via the Python server) so Sprint 2 can pick one.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. WhisperSttProvider.supportsLanguage("fr") and ("en") are true; ("rw") is false.
+3. SttProviderFactory.forLanguage("fr") returns the whisper provider; forLanguage("rw") throws a clear exception (no rw provider registered) rather than returning whisper.
+4. SttService.transcribe increments tuganire.providers.usage{type="stt"}.
+5. Only WhisperSttProvider imports org.springframework.ai.* within the stt package.
+6. STT-KINYARWANDA-NOTE.md documents the limitation and the two alternative rw-STT options.
+
+NOTES
+
+Do NOT pretend whisper-1 handles Kinyarwanda — the interface-based design exists precisely so Sprint 2 can plug in a real rw provider. If the installed Spring AI milestone's transcription API class names differ from ARCHI's snippet, adapt to the real API; SttProvider is the stable seam. Unit tests (Task 22) mock the transcription model.

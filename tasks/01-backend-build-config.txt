@@ -1,0 +1,62 @@
+TASK 01 — Backend Build, Configuration and Project Cleanup
+
+PROJECT CONTEXT
+
+This is the tuganire repository, originally a Spring Boot SaaS template (base package com.tuganire) now being repurposed into the Tuganire MVP: a French to Kinyarwanda voice-translation backend. The pre-fork SaaS features (auth, payment, blog, admin, storage) are NOT part of Tuganire and are being removed in this task. Conventions to keep (from CLAUDE.md): feature-driven packages under com.tuganire (each feature owns controller / service / repository / model / dto layers); cross-cutting code under config/ and shared/. Use Lombok (@RequiredArgsConstructor for DI, @Slf4j for logging). Services are interfaces with a sibling *Impl class. Controllers return DTOs (Java records), never entities. Code style is enforced by Spotless (eclipse-formatter.xml) + Checkstyle at the validate phase; SpotBugs + FindSecBugs at verify. Run ./mvnw spotless:apply before compiling. CI runs ./mvnw -B -ntp clean verify on every push — match it locally.
+
+ARCHITECTURE
+
+See ARCHI.md sections 3 (Stack technique) and 8 (Structure des projets). Target backend layout (folder = feature package under src/main/java/com/tuganire): config/, conversation/, translation/ (+ normalizer/), llm/ (+ prompt/), postprocessor/ (+ rules/), tts/, stt/, golden/, feedback/, cache/, web/. Resources: application.yml + application-dev.yml + application-prod.yml, db/migration/ (Flyway), static/css, static/js, templates/. The full target application.yml is given verbatim in ARCHI.md section 6 ("Configuration application.yml") — use it as the source of truth. This is a monolith modulaire (ADR-002), virtual threads not WebFlux (ADR-003).
+
+TECH STACK AND BEST PRACTICES
+
+Java 21 (Temurin), Maven (./mvnw). Spring Boot 4.0.6 (latest stable 4.x, May 2026) — requires migrating the existing Boot 3.5 pom. Spring Framework 7 ships with it. Spring AI 2.0.0-M6 (newest milestone as of May 2026; PRD/ARCHI say M4 — pin the newest available milestone in pom.xml, GA is imminent). Add starters: spring-boot-starter-web, spring-boot-starter-validation, spring-boot-starter-data-jpa, spring-boot-starter-data-redis, spring-boot-starter-thymeleaf, thymeleaf-layout-dialect, spring-boot-starter-actuator, spring-boot-starter-websocket, spring-ai-starter-model-openai, spring-ai-starter-model-anthropic, flyway-core + flyway-database-postgresql, postgresql driver, lombok. Breaking changes to honour: Jackson 3 (imports tools.jackson.*, NOT com.fasterxml.jackson.*); Jakarta EE 11 (javax.* invalid); JSpecify nullability. Enable virtual threads: spring.threads.virtual.enabled=true. CRITICAL virtual-thread pitfall: never use synchronized blocks (they pin carrier threads) — use ReentrantLock. Native API versioning: spring.mvc.apiversion.use.path-segment: v (URLs become /api/v1/...). Spring AI 2.0 requires an explicit temperature (no default) — set 0.3 in config. Use the milestone repo (https://repo.spring.io/milestone) in pom.xml since Spring AI 2.0 is a milestone.
+
+CONTEXT
+
+This is the foundation task that unblocks all other backend work (PRD Sprint 1). It produces a compiling, bootable Spring Boot 4 application with the correct dependencies, configuration and clean package skeleton, and removes the obsolete SaaS template code so later tasks build on a clean tree. Without this, no other backend task can compile.
+
+DEPENDENCIES
+
+None. This task can start immediately.
+
+PARALLEL GROUP
+
+Group A (Foundation), Wave 1. Runs in parallel with Task 02 (Python TTS server) and Task 03 (Android skeleton) — different stacks, no shared files.
+
+WHAT TO IMPLEMENT
+
+File: pom.xml
+Purpose: Build definition. Upgrade spring-boot-starter-parent to 4.0.6, java.version to 21, add the Spring AI BOM (spring-ai-bom 2.0.0-M6) and the spring-milestones repository, add the starters listed above, remove SaaS-only dependencies (Stripe, AWS S3, mail starters, easymde, etc.) that the removed features used. Keep Spotless, Checkstyle, SpotBugs/FindSecBugs, JaCoCo, frontend-maven-plugin, Jib. Add the org.jspecify:jspecify dependency.
+
+File: src/main/resources/application.yml
+Purpose: Default config. Replace with the application.yml from ARCHI.md section 6 verbatim: spring.ai.openai (model gpt-4o, temperature 0.3, audio transcription whisper-1, speech gpt-4o-mini-tts), spring.ai.anthropic (claude-haiku-4-5-20251001, temperature 0.3), datasource via ${DATABASE_*}, data.redis.url, threads.virtual.enabled true, spring.mvc.apiversion.use.path-segment v, the tuganire.* block (tts/stt/llm providers, mms.base-url, cache, rate-limit), management.otlp, logging. Every external dependency must use ${VAR:default} so the app boots without real credentials.
+
+File: src/main/resources/application-dev.yml and application-prod.yml
+Purpose: Profile overrides. Dev points at localhost Postgres (jdbc:postgresql://localhost:5432/tuganire) and localhost:6379 Redis from docker-compose; prod reads everything from env vars.
+
+File: docker-compose.yml
+Purpose: Local infra. Postgres 16 (db tuganire, user/password tuganire) on 5432 and Redis 7 on 6379.
+
+File: src/main/java/com/tuganire/TuganireApplication.java
+Purpose: Main class with @SpringBootApplication.
+
+Files to DELETE: the entire auth/, payment/, blog/, admin/, storage/ feature packages under src/main/java/com/tuganire and their templates, static assets, and Flyway migrations under db/migration; the corresponding test classes under src/test (com.saaskit AuthControllerIT, StripeWebhookIT, LocalStorageServiceImplTest, etc.). Keep a minimal shared/exception scaffolding (GlobalExceptionHandler, ResourceNotFoundException, BusinessException) if present, otherwise leave shared/ empty for later tasks.
+
+File: src/main/java/com/tuganire/config/.gitkeep (and empty package folders conversation/, translation/, llm/, postprocessor/, tts/, stt/, golden/, feedback/, cache/, web/ as needed)
+Purpose: Establish the target package skeleton so parallel feature tasks have a home.
+
+Environment variables (document in README later): OPENAI_API_KEY, ANTHROPIC_API_KEY, DATABASE_URL, DATABASE_USER, DATABASE_PASSWORD, REDIS_URL, MMS_TTS_URL.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw -version resolves and pom.xml declares spring-boot-starter-parent 4.0.6 and java.version 21.
+2. ./mvnw clean compile succeeds with zero Spotless/Checkstyle violations.
+3. The auth, payment, blog, admin and storage packages and their tests no longer exist anywhere under src/.
+4. docker-compose up -d starts Postgres 16 and Redis 7; the app starts with ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev without crashing (LLM calls may fail only when exercised).
+5. application.yml contains spring.threads.virtual.enabled: true, spring.mvc.apiversion.use.path-segment: v, and an explicit temperature: 0.3 for both openai and anthropic.
+6. No source file imports com.fasterxml.jackson.* (Jackson 3 uses tools.jackson.*).
+
+NOTES
+
+This task is intentionally destructive: it strips the SaaS template. Confirm the deleted packages are SaaS-only before removing. Spring AI 2.0 is a milestone — the spring-milestones repository must be declared or dependency resolution fails. Do not wire an S3Client/S3Template; storage is out of scope for Tuganire MVP.

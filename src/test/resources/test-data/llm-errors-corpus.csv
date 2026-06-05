@@ -1,0 +1,69 @@
+id,sourceText,sourceLanguage,llmRawOutput,nativeCorrection,category
+1,Aidez-moi s'il vous plaît,fr,Ndakwinginze gufasha,ndabinginze gufasha,PLURAL_RESPECT
+2,Je voudrais de l'eau,fr,Ndakwinginze mpa amazi,ndabinginze mumpe amazi,PLURAL_RESPECT
+3,Pouvez-vous m'aider ?,fr,Wamfasha gute ?,mwamfasha gute ?,PLURAL_RESPECT
+4,Dites-moi le prix,fr,Mbwira igiciro,mwambwira igiciro,PLURAL_RESPECT
+5,Montrez-moi comment faire,fr,Nkugezeho uko bikozwe,mwagezeho uko bikozwe,PLURAL_RESPECT
+6,Demandez-moi la route,fr,Nkubaza inzira,mwabaza inzira,PLURAL_RESPECT
+7,Il me nourrit,fr,Amfasha kurya ibiryo,amfasha kundya ibiryo,INFIX_PRONOUN
+8,Elle m'a dit la vérité,fr,Yambwiye ukuri,yambwiye ukuri,INFIX_PRONOUN
+9,Ils m'ont aidé,fr,Bafasha,bandafasha,INFIX_PRONOUN
+10,Peux-tu me voir ?,fr,Urashobora kubona ?,urashobora kundabona ?,INFIX_PRONOUN
+11,Il me donne à manger,fr,Ampa kurya,ampehe kurya,INFIX_PRONOUN
+12,Pardonnez-moi s'il vous plaît,fr,Mwambabarira ndabinginze,ndabinginze,ANTI_POLITENESS_STACKING
+13,Je vous demande pardon,fr,Ndabinginze mwambabarira cyane,ndabinginze,ANTI_POLITENESS_STACKING
+14,Excusez-moi de vous déranger,fr,Mwambabarira mwirinde,mwirinde,ANTI_POLITENESS_STACKING
+15,Je suis vraiment désolé,fr,Mubabarire ndabinginze bikomeye,ndabinginze,ANTI_POLITENESS_STACKING
+16,Quelle belle journée,fr,Uyu munsi ni arakool cyane,uyu munsi ni cool cyane,ANTI_HALLUCINATION
+17,Mon responsable,fr,Ndziho wanjye,umutegetsi wanjye,ANTI_HALLUCINATION
+18,Il a lu le livre,fr,Yego arasome igitabo,yego asomye igitabo,ANTI_HALLUCINATION
+19,Bonnes nouvelles,fr,Inkuru nzuri nawe,amakuru meza nawe,ANTI_HALLUCINATION
+20,Un gros problème,fr,Ikibazo kibi cyane,ikibazo gikomeye cyane,ANTI_HALLUCINATION
+21,Accordez-moi une réduction,fr,Mwampa kugabanyirizwa kuri iyi,mwangabanyiriza kuri iyi,ANTI_SYNTACTIC_CALQUE
+22,Donnez-moi à boire,fr,Mwampa kunywa amazi,mwanyweshe amazi,ANTI_SYNTACTIC_CALQUE
+23,Donnez-moi à manger,fr,Mwampa kurya,mwanduhe,ANTI_SYNTACTIC_CALQUE
+24,Je voudrais une réduction,fr,Mpa kugabanyirizwa igiciro,ngabanyirize igiciro,ANTI_SYNTACTIC_CALQUE
+25,Montrez-moi cela,fr,Mwampa kubona,mwandekure,ANTI_SYNTACTIC_CALQUE
+26,Bonjour comment allez-vous,fr,Muraho amakuru,Muraho amakuru,NONE
+27,Je suis bien merci,fr,Neza cyane murakoze,Neza cyane murakoze,NONE
+28,Quelle heure est-il ?,fr,Ni saa ngapi ?,Ni saa ngapi ?,NONE
+29,Je viens de France,fr,Nturuka Ubufaransa,Nturuka Ubufaransa,NONE
+30,Je travaille à l'hôpital,fr,Akora mu bitaro,Akora mu bitaro,NONE
+31,Aidez ce patient,fr,Ndakwinginze gufasha uyu murwayi,ndabinginze gufasha uyu murwayi,PLURAL_RESPECT
+32,Expliquez-moi le traitement,fr,Nkubaza ibyerekeye imiti,mwabaza ibyerekeye imiti,PLURAL_RESPECT
+33,Donnez-moi ce médicament,fr,Mpa iyo miti,mumpe iyo miti,PLURAL_RESPECT
+34,Il m'a raconté une histoire,fr,Yambwiye inkuru,yambwiye amakuru,INFIX_PRONOUN
+35,Elle m'a aidé à cuisiner,fr,Yanfashije guteka,yanfashije guteka,NONE
+36,Regardez bien le chemin,fr,Kureba neza inzira,kureba neza inzira,NONE
+37,Remerciez-le de ma part,fr,Mumusezere muri jye,mumusezere muri jye,NONE
+38,Où habitez-vous ?,fr,Mutuye he ?,mutuye he ?,NONE
+39,Depuis combien de temps ?,fr,Kuva ryari ?,kuva ryari ?,NONE
+40,C'est une bonne idée,fr,Ni icyiyumviro cyiza,ni icyiyumviro cyiza,NONE
+41,Il s'appelle Jean,fr,Yitwa Jean,yitwa Jean,NONE
+42,Nous allons à l'église,fr,Tugiye mu rusengero,tugiye mu rusengero,NONE
+43,Le marché est proche,fr,Isoko iri hafi,isoko iri hafi,NONE
+44,J'ai faim,fr,Mfite inzara,mfite inzara,NONE
+45,Il fait chaud aujourd'hui,fr,Uyu munsi hararangwa,uyu munsi hararangwa,NONE
+46,Venez me voir demain,fr,Nkubaza ejo,mwabaza ejo,PLURAL_RESPECT
+47,Permettez-moi de partir,fr,Ndakwinginze gusohoka,ndabinginze gusohoka,PLURAL_RESPECT
+48,Il m'a donné de l'argent,fr,Yampaye amafaranga,yampaye amafaranga,NONE
+49,Je suis content de te voir,fr,Nishimiye kubona,nishimiye kundabona,INFIX_PRONOUN
+50,Dieu nous bénisse,fr,Imana iduhe umugisha,imana iduhe umugisha,NONE
+51,Les enfants jouent dehors,fr,Abana bakina hanze,abana bakina hanze,NONE
+52,Elle chante très bien,fr,Arabyina neza cyane,arabyina neza cyane,NONE
+53,Le livre est intéressant,fr,Igitabo ni interesting cane,igitabo ni gishimishije,ANTI_HALLUCINATION
+54,Je suis vraiment cool,fr,Ni arakool cyane muri jye,ni cool cyane muri jye,ANTI_HALLUCINATION
+55,Accordez-moi cette faveur,fr,Mpa kugabanyirizwa iyi,ngabanyirize iyi,ANTI_SYNTACTIC_CALQUE
+56,Je veux acheter ceci,fr,Mpa kugura ibi,mpere ibi,ANTI_SYNTACTIC_CALQUE
+57,Montrez-moi le chemin,fr,Nkugezeho inzira,mwagezeho inzira,PLURAL_RESPECT
+58,Vous êtes très gentil,fr,Muri mwiza cyane,muri mwiza cyane,NONE
+59,La route est longue,fr,Inzira ni ndende,inzira ni ndende,NONE
+60,Il faut partir tôt,fr,Bikwiye gutura kare,bikwiye kuva kare,INFIX_PRONOUN
+61,Je cherche mon passeport,fr,Npeshwa indangagaciro yanjye,npeshwa indangagaciro yanjye,NONE
+62,Appelez une ambulance,fr,Hamagara ambulance,hamagara ambulance,NONE
+63,Je voudrais voir le médecin,fr,Ndakwinginze kubona umuganga,ndabinginze kubona umuganga,PLURAL_RESPECT
+64,Merci beaucoup,fr,Murakoze cyane,murakoze cyane,NONE
+65,Excusez mon retard,fr,Mubabarire ndabinginze gutindira,ndabinginze gutindira,ANTI_POLITENESS_STACKING
+66,Je ne comprends pas,fr,Sinumva,sinumva,NONE
+67,Pouvez-vous répéter ?,fr,Wamfasha gusubiramo ?,mwamfasha gusubiramo ?,PLURAL_RESPECT
+68,Quelle est votre adresse ?,fr,Aderesi yawe ni iyihe ?,aderesi yanyu ni iyihe ?,PLURAL_RESPECT

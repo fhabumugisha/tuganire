@@ -1,0 +1,55 @@
+TASK 02 — Python MMS-TTS Server (FastAPI)
+
+PROJECT CONTEXT
+
+This is a standalone Python service that lives alongside the Tuganire backend. Per ARCHI.md it is conceptually a separate repository (tuganire-tts) but for this MVP it is created as a subfolder tts-server/ at the repository root so the agent team works in one tree. It synthesizes speech for Kinyarwanda and French using Meta MMS-TTS models. No project Java conventions apply here; follow idiomatic Python and FastAPI practices. Keep it small, typed (pydantic), and dependency-pinned.
+
+ARCHITECTURE
+
+See ARCHI.md section 7 ("Serveur Python MMS-TTS"), which gives the full reference implementation. The Spring backend's MmsTtsProvider (Task 13) calls this server through a typed @HttpExchange client (MmsTtsClient) at endpoints POST /tts and GET /health. ADR-006: MMS-TTS (facebook/mms-tts-kin) is the chosen Kinyarwanda TTS because it is the only model trained natively on Kinyarwanda; quality is more robotic but pronunciation is correct.
+
+TECH STACK AND BEST PRACTICES
+
+Python 3.11+, FastAPI + uvicorn. HuggingFace transformers VitsModel + AutoTokenizer. Load models with VitsModel.from_pretrained("facebook/mms-tts-kin") and ("facebook/mms-tts-fra"). MMS-TTS requires transformers >= 4.36 and torch >= 2.4 (pin exact versions for reproducibility). Synthesis: tokenize text (lowercase, minimal punctuation recommended for Kinyarwanda), run model under torch.no_grad(), read waveform from outputs.waveform[0], sample rate from model.config.sampling_rate (~16000 for these models — read it, do not hardcode). VITS is non-deterministic/flow-based; call transformers.set_seed() before inference if reproducible output is needed. Return binary WAV via fastapi.responses.Response(content=..., media_type="audio/wav"). Device selection: prefer mps (Mac M-series), then cuda, else cpu.
+
+CONTEXT
+
+This server delivers the Kinyarwanda voice that Mukamana hears (PRD US-01, audio validation section — MMS-TTS already validated by a native speaker). It is part of Sprint 2 (pipeline complet). It can be built fully independently of the Java backend.
+
+DEPENDENCIES
+
+None. This task can start immediately.
+
+PARALLEL GROUP
+
+Group A (Foundation), Wave 1. Runs in parallel with Task 01 and Task 03 — separate stack and folder.
+
+WHAT TO IMPLEMENT
+
+File: tts-server/tts_server.py
+Purpose: FastAPI app. Implement get_device(), load MODELS dict for "rw" (mms-tts-kin) and "fr" (mms-tts-fra) at startup, GET /health returning {status, device, languages}, POST /tts accepting {text, lang} returning audio/wav with header X-Generation-Time-Ms. Return HTTP 400 for an unsupported lang. Log generation time per request. Use the reference code in ARCHI.md section 7 as the basis.
+
+File: tts-server/requirements.txt
+Purpose: Pinned dependencies: fastapi, uvicorn, transformers>=4.36, torch>=2.4, scipy, pydantic. Pin exact versions.
+
+File: tts-server/pyproject.toml
+Purpose: Project metadata + tool config (optional ruff config).
+
+File: tts-server/Dockerfile
+Purpose: Build image; CMD runs uvicorn tts_server:app --host 0.0.0.0 --port 8000. Document GPU run (docker run --gpus all).
+
+File: tts-server/README.md
+Purpose: Local run instructions (uv venv, install, uvicorn) and the /tts + /health contract.
+
+ACCEPTANCE CRITERIA
+
+1. uvicorn tts_server:app --port 8000 starts and downloads/loads both MMS models without error.
+2. GET /health returns 200 with JSON {status:"ok", device:"...", languages:["rw","fr"]} (order of languages not significant).
+3. POST /tts with {"text":"muraho","lang":"rw"} returns 200, Content-Type audio/wav, a non-empty body, and an X-Generation-Time-Ms header.
+4. POST /tts with an unsupported lang (e.g. "sw") returns HTTP 400.
+5. requirements.txt pins exact versions and transformers>=4.36, torch>=2.4.
+6. The WAV sample rate is read from model.config.sampling_rate, not hardcoded.
+
+NOTES
+
+First run downloads model weights (hundreds of MB) — allow time. The same VitsModel pipeline can later serve MMS ASR for Kinyarwanda STT (see Task 14 note on the Whisper Kinyarwanda gap) but that is out of scope here. Keep CPU fallback working so the server runs on a laptop without a GPU.

@@ -1,0 +1,53 @@
+TASK 16 — Translation Service Orchestrator
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): service interface + *Impl, Lombok (@RequiredArgsConstructor, @Slf4j), DTOs are records, no inline duplicated literals. This service composes the pieces built in Wave 3–4 into the canonical pipeline. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5 ("Le cœur du système — TranslationService"), which gives the exact orchestration order: (0) cache hit → return; (1) normalize source (FR only); (2) golden dictionary hit → cache + return; (3) LLM translate; (4) post-process (5 rules); (5) build response + cache. Place TranslationService (interface) + TranslationServiceImpl in com.tuganire.translation. It depends on: TranslationCache (Task 08), FrenchNormalizer + GoldenDictionaryService (Task 11), LlmProviderFactory/LlmProvider (Task 10), KinyarwandaPostProcessor (Task 12).
+
+TECH STACK AND BEST PRACTICES
+
+Plain Spring service, Java 21. Inject collaborators by constructor (Lombok). Use the LLM via LlmProviderFactory.getDefault() with a try/catch fallback to getFallback() on failure (PRD risk mitigation: OpenAI→Claude fallback). Record Micrometer timers per stage: tuganire.translations.latency.seconds{stage="normalize|golden|llm|postprocess"} and a counter tuganire.translations.total{src,tgt,cached,golden}. No synchronized blocks (virtual threads) — use local variables. Normalizer runs only when sourceLanguage is French.
+
+CONTEXT
+
+This is the single entry point every caller (REST controller Task 18, conversation pipeline Task 17, WebSocket Task 19) uses for text translation. It guarantees the cache→golden→LLM→post-processor flow that delivers Tuganire's quality and cost targets (PRD metrics, ADR-005). It is the integration point of the whole Wave 3–4 work, hence Wave 5 alone.
+
+DEPENDENCIES
+
+Requires Task 08 (cache), Task 10 (LLM providers + factory), Task 11 (normalizer + golden), Task 12 (post-processor). DTOs from Task 04.
+
+PARALLEL GROUP
+
+Group E (Orchestration), Wave 5. Runs alone (it is the convergence point of Wave 4); nothing else is in Wave 5.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/translation/TranslationService.java
+Purpose: interface with TranslationResponse translate(String sourceText, Locale src, Locale tgt); and TranslationResponse translate(TranslationRequest request); (the second delegates).
+
+File: src/main/java/com/tuganire/translation/TranslationServiceImpl.java
+Purpose: @Service @RequiredArgsConstructor @Slf4j implementing the 6-step pipeline exactly per ARCHI section 5:
+- cache.find → if present return (fromCache=true);
+- if src is French, normalized = normalizer.normalize(sourceText), else normalized = sourceText;
+- goldenDict.lookup(normalized, src, tgt) → if present cache.put + return (fromGoldenDictionary=true);
+- llm = factory.getDefault(); String raw = llm.translate(normalized, src, tgt) with try/catch fallback to factory.getFallback();
+- ProcessedTranslation processed = postProcessor.process(raw, src, tgt);
+- response = TranslationResponse.fromLlm(sourceText, processed.text(), processed.appliedCorrections()); cache.put; return.
+Wrap each stage in a Micrometer Timer and increment the translations.total counter with tags.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. A cached (text, src, tgt) returns immediately with fromCache=true and does NOT invoke the LLM (verifiable by mocking collaborators in a unit test — Task 22).
+3. A golden-dictionary hit returns fromGoldenDictionary=true, writes to cache, and does NOT invoke the LLM.
+4. On an LLM miss path, the response carries the post-processor's appliedCorrections and is written to cache.
+5. When the default LLM provider throws, the service falls back to the fallback provider and still returns a response.
+6. The normalizer is invoked only when sourceLanguage is French (RW→FR skips normalization).
+
+NOTES
+
+This is the most-tested service (Task 22 unit-tests it with mocked collaborators; TranslationQualityIT runs the 65-phrase corpus through it). Keep the method side-effect-light apart from cache writes and metrics. Do not perform STT/TTS here — that orchestration is the audio pipeline (Task 17).

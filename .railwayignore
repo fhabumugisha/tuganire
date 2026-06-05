@@ -1,0 +1,24 @@
+# Trim what `railway up` uploads for the BACKEND service.
+# (railway up ignores .dockerignore, so this file is required to avoid huge/502 uploads.)
+#
+# NOTE: .railwayignore uses .gitignore semantics — patterns are NOT anchored by default,
+# so a bare `rules/` would also match src/.../postprocessor/rules/ (a Java package!).
+# Every directory pattern below is anchored with a leading slash to only match repo root.
+
+# Heaviest offenders
+/tts-server/
+/node_modules/
+/node/
+/target/
+/.git/
+/.idea/
+
+# Local / non-build files
+/docs/
+/rules/
+/tasks/
+.env
+.env.*
+*.iml
+.DS_Store
+/run-dev.sh

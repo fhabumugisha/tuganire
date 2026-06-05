@@ -4,15 +4,23 @@ server:
 spring:
   thymeleaf:
     cache: true
-
   datasource:
-    url: jdbc:postgresql://${DATABASE_HOST}?user=${DATABASE_USERNAME}&password=${DATABASE_PASSWORD}&sslmode=require&channelBinding=require
-
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      # Neon pooled endpoint + Cloud Run scale-to-zero: keep the per-instance pool small
+      # so concurrent instances don't exhaust the upstream connection limit.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: 1
+      connection-timeout: 10000
+  data:
+    redis:
+      url: ${REDIS_URL}
   jpa:
     show-sql: false
 
 logging:
-  config: classpath:logback-spring.xml
   level:
     com.tuganire: WARN
     org.springframework: WARN

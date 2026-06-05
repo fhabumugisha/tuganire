@@ -1,0 +1,238 @@
+---
+description: Active on Java, Spring Boot 4 and all backend related code
+globs: **/*.java
+alwaysApply: false
+---
+
+# Cursor AI Rules for Spring Boot 4 Project
+
+> Spring Boot 4.0 (GA 20 Nov 2025) builds on **Spring Framework 7** and **Jakarta EE 11**.
+> Baseline is **Java 21** (Java 17 still compatible, Java 25 fully supported).
+
+## General Guidelines
+- Act as a **Senior Java Developer** following SOLID, DRY, KISS, and YAGNI principles.
+- Use **Java 21** (LTS) and **Spring Boot 4 / Spring Framework 7** conventions.
+- Target the **Jakarta EE 11** namespace: always use `jakarta.*` imports, never `javax.*`.
+- Follow **OWASP security best practices** (e.g., input validation, CSRF protection).
+- Generate **clean, production-ready code** with appropriate comments.
+- Embrace modern Java 21 language features: **records**, **sealed classes**, **pattern matching for `switch`**, **record patterns**, **virtual threads**, and **text blocks**.
+
+## Java 21 Language Features to Prefer
+- Use **records** for DTOs, value objects, and immutable carriers.
+- Use **pattern matching for `switch`** and **record patterns** instead of `instanceof` chains.
+- Use **sealed interfaces/classes** to model closed hierarchies (e.g., result/command types).
+- Enable **virtual threads** for blocking workloads via `spring.threads.virtual.enabled=true` (Project Loom). Pair high-concurrency virtual-thread code with `@ConcurrencyLimit` where a bounded resource must be protected.
+- Use **text blocks** for multiline SQL/JSON strings.
+
+## Null Safety (JSpecify)
+- Spring Framework 7 standardizes nullability on **JSpecify** (`org.jspecify.annotations`).
+- Annotate packages with `@NullMarked` (in `package-info.java`) so non-annotated types are non-null by default.
+- Use `@Nullable` / `@NonNull` from `org.jspecify.annotations` (NOT the old `org.springframework.lang` annotations, which are deprecated).
+- Be aware that enabling a null checker (or Kotlin) may surface compilation errors against the now-annotated Spring APIs; honor the contracts rather than suppressing them.
+
+## Project Structure
+- Use **Maven** as the build tool.
+- Use **feature-driven (package-by-feature) naming** rather than package-by-layer; within a feature, keep `controller`, `service`, `repository`, `model`, `dto`, and `mapper` sub-packages.
+- Use **Lombok** for boilerplate reduction (`@Getter`, `@Builder`, `@RequiredArgsConstructor`); prefer **records** over `@Data` for immutable DTOs.
+- Use **constructor-based dependency injection** (`@RequiredArgsConstructor` on `final` fields). Do NOT use field injection.
+- Return **DTOs instead of entities** from controllers; convert with dedicated **mappers** (MapStruct or hand-written).
+- Always add the package declaration and all imports.
+- **Internationalize all messages** using `messages.properties`, `messages_en.properties`, and `messages_fr.properties`.
+- Use **constants** instead of duplicated string literals in Java classes.
+- Use **`application.yaml`** for configuration; leverage **`@ConfigurationProperties`** (with records + `@Validated`) over scattered `@Value`.
+- Use a **`GlobalExceptionHandler`** for centralized exception management.
+- Take advantage of the new **modularized Spring Boot jars** — depend only on the focused starters/modules you actually need rather than pulling in everything.
+
+## Entity & Repository Rules
+- Define entities with:
+  - `@Entity`
+  - `@Table(name = "table_name")`
+  - `@Id @GeneratedValue(strategy = GenerationType.IDENTITY)`
+  - Proper `@OneToMany` / `@ManyToOne` relationships.
+  - `@JsonIgnore` to prevent infinite recursion in bidirectional relationships.
+- Define repositories that extend `JpaRepository<Entity, Long>`:
+  - Use `@Query` for custom queries.
+  - Use `@EntityGraph` to optimize joins and avoid N+1.
+  - Apply a **soft-delete** strategy where relevant (e.g., `deleted_at` / `is_deleted`).
+  - Apply **JPA auditing** where relevant (`created_by`, `created_at`, `last_modified_by`, `last_modified_at`).
+
+## Service Layer Rules
+- Services are interfaces with `@Service` implementations.
+- Use **constructor-based dependency injection**.
+- Annotate transactional methods with `@Transactional` (read-only ones with `@Transactional(readOnly = true)`).
+- Generate **Javadoc** on all methods of service interfaces.
+
+## Resilience (Spring Framework 7 core)
+- Use the built-in resilience annotations (no extra Spring Retry dependency needed):
+  - `@Retryable` for declarative retries (supports exponential back-off and jitter; adapts to reactive methods).
+  - `@ConcurrencyLimit` to throttle concurrent invocations — especially valuable with virtual threads.
+  - Enable both with `@EnableResilientMethods` on a `@Configuration` class.
+- For programmatic control, use `RetryTemplate` / `RetryPolicy`.
+
+## Controller Guidelines
+- Use `@RestController` and `@RequestMapping("/api/resource")`.
+- Define endpoints with `@GetMapping`, `@PostMapping`, etc.
+- Use `@Valid` for request validation.
+- Return `ResponseEntity<ApiResponse<T>>`.
+- Add **OpenAPI** specification to document and test APIs (springdoc-openapi).
+- Use **API Versioning** (new in Spring 7 / Boot 4) instead of ad-hoc URL versioning. Declare the version on the mapping and configure the strategy (path, header, query parameter, or media type) via `ApiVersionStrategy`. Example: `@GetMapping(value = "/users", version = "1.1")`.
+
+## Calling Other Services (HTTP clients)
+- Prefer **`RestClient`** for synchronous HTTP and **`WebClient`** for reactive. **Do NOT use `RestTemplate`** — it is deprecated as of Spring Framework 7.1 and slated for removal in Spring Framework 8.
+- For service-to-service calls, prefer **declarative HTTP Service Clients**: define a plain interface with `@HttpExchange` methods and let Spring generate the implementation.
+- Register HTTP interfaces with **`@ImportHttpServices`** and configure clients per group with a **`RestClientHttpServiceGroupConfigurer`** bean (backed by `HttpServiceProxyFactory` / `HttpServiceProxyRegistry`).
+
+## Testing
+- Write unit tests using **JUnit 5** and Spring Boot Test.
+- Use **MockMvc** (or `WebTestClient`) for web-layer tests.
+- Implement integration tests with `@SpringBootTest`.
+- Use `@DataJpaTest` for repository-layer tests.
+- Use `@ExtendWith(MockitoExtension.class)` for service-layer unit tests.
+- Prefer **Testcontainers** with `@ServiceConnection` for realistic integration tests against real databases/brokers.
+- Follow the **Given-When-Then** structure.
+- Aim for 80%+ coverage but prioritize meaningful tests over coverage numbers.
+- Use the Maven **Surefire** (unit) and **Failsafe** (integration) plugins.
+
+## Build, Observability & Deployment
+- Use Maven for dependency management and builds.
+- Implement profiles for different environments (`dev`, `test`, `prod`).
+- For observability, use **Micrometer** with the new **`spring-boot-starter-opentelemetry`** to export metrics and traces over **OTLP** with zero extra setup.
+- Use Docker for containerization (Maven **JIB** plugin or `bootBuildImage`).
+- For GraalVM **native images** / **AOT**, rely on Spring Boot 4's improved AOT processing (aligned to GraalVM 24) for faster startup and reduced memory footprint.
+
+## Exception Handling
+- Implement a **Global Exception Handler** (`@RestControllerAdvice`).
+- Handle at minimum:
+  - `ResourceNotFoundException` → 404
+  - `ValidationException` / `MethodArgumentNotValidException` → 400
+  - `AccessDeniedException` → 403
+- Prefer returning **RFC 9457 `ProblemDetail`** responses for consistent, standard error payloads.
+
+## Security Best Practices
+- Use **Spring Security 7** with JWT-based authentication.
+- Configure security with the lambda DSL `SecurityFilterChain` bean (the older `WebSecurityConfigurerAdapter` is long removed).
+- Protect sensitive endpoints with `@PreAuthorize`.
+
+## Example Code Snippets
+
+### Sample DTO (record)
+```java
+package com.example.user.dto;
+
+public record UserDto(Long id, String username) {}
+```
+
+### Sample Entity
+```java
+package com.example.user.model;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Table(name = "users")
+@Getter
+@Setter
+@NoArgsConstructor
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String password;
+}
+```
+
+### Sample Repository
+```java
+package com.example.user.repository;
+
+import com.example.user.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUsername(String username);
+}
+```
+
+### Sample Controller (with API versioning)
+```java
+package com.example.user.controller;
+
+import com.example.user.dto.UserDto;
+import com.example.user.service.UserService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+
+    private final UserService userService;
+
+    @GetMapping(value = "/{id}", version = "1.0")
+    public ResponseEntity<UserDto> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserById(id));
+    }
+}
+```
+
+### Sample Declarative HTTP Service Client
+```java
+package com.example.user.client;
+
+import org.springframework.web.service.annotation.GetExchange;
+import org.springframework.web.service.annotation.HttpExchange;
+
+@HttpExchange("/api/users")
+public interface UserApiClient {
+
+    @GetExchange("/{id}")
+    UserDto getUser(@PathVariable Long id);
+}
+```
+
+### Registering HTTP Service Clients
+```java
+package com.example.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.service.registry.ImportHttpServices;
+
+@Configuration
+@ImportHttpServices(group = "users", types = UserApiClient.class)
+public class HttpClientConfig {
+}
+```
+
+### Declarative Resilience
+```java
+package com.example.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.resilience.annotation.EnableResilientMethods;
+
+@Configuration
+@EnableResilientMethods
+public class ResilienceConfig {
+}
+
+// usage in a component
+import org.springframework.resilience.annotation.ConcurrencyLimit;
+import org.springframework.resilience.annotation.Retryable;
+
+@Retryable(maxAttempts = 3)
+@ConcurrencyLimit(10)
+public InventoryResult reserve(Long productId) { /* ... */ }
+```

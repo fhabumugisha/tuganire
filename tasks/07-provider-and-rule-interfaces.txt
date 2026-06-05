@@ -1,0 +1,61 @@
+TASK 07 — Provider Interfaces, Config Records and Correction-Rule Contracts
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): services exposed as interfaces with sibling *Impl; configuration as @ConfigurationProperties records; Lombok where helpful. The whole point of these interfaces is modularity (ARCHI principle 1, ADR-004): every external provider (LLM, STT, TTS) sits behind an interface so implementations are swappable at runtime. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 4 (TtsProvider interface, TtsConfig record, factory pattern) and section 5 (CorrectionRule interface, RuleResult / ProcessedTranslation records). Place: LlmProvider in com.tuganire.llm; TtsProvider in com.tuganire.tts; SttProvider in com.tuganire.stt; CorrectionRule + RuleResult + ProcessedTranslation in com.tuganire.postprocessor; config records (TtsConfig, SttConfig, LlmConfig) in com.tuganire.config. The concrete factories (LlmProviderFactory, TtsProviderFactory) are built in the provider implementation tasks (10, 13, 14), not here.
+
+TECH STACK AND BEST PRACTICES
+
+Java 21 interfaces and records. @ConfigurationProperties(prefix="tuganire.tts" / ".stt" / ".llm") bound from application.yml (Task 01) — register with @EnableConfigurationProperties or @ConfigurationPropertiesScan. JSpecify annotations on record components. Keep these contracts free of Spring AI types so the M4→GA migration only touches implementations (ADR-008).
+
+CONTEXT
+
+These are the seams of the architecture. Defining them now lets Tasks 10–14 implement each provider in parallel without colliding, and lets the post-processor (Task 12) and TranslationService (Task 16) depend only on stable abstractions (PRD pipeline, ARCHI sections 4–5).
+
+DEPENDENCIES
+
+Requires Task 04 (DTOs/events) to be complete (TtsProvider/LlmProvider reference Locale and the translation DTOs indirectly; ProcessedTranslation is a sibling type).
+
+PARALLEL GROUP
+
+Group C (Core seams), Wave 3. Runs in parallel with Task 08 (Redis cache) and Task 09 (Feedback service) — distinct packages/files.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/llm/LlmProvider.java
+Purpose: interface with String translate(String text, Locale src, Locale tgt); String name(); and optionally StructuredTranslation translateStructured(String text, Locale src, Locale tgt) returning the Task 04 record.
+
+File: src/main/java/com/tuganire/tts/TtsProvider.java
+Purpose: interface per ARCHI: byte[] synthesize(String text, String languageCode); String name(); boolean supportsLanguage(String languageCode); plus default void warmup(Locale lang) {} (used by the virtual-thread pipeline in Task 17).
+
+File: src/main/java/com/tuganire/stt/SttProvider.java
+Purpose: interface: String transcribe(byte[] audio, Locale language); String name(); boolean supportsLanguage(String languageCode).
+
+File: src/main/java/com/tuganire/postprocessor/CorrectionRule.java
+Purpose: interface CorrectionRule { RuleResult apply(String text, Locale src, Locale tgt); String name(); }.
+
+File: src/main/java/com/tuganire/postprocessor/RuleResult.java
+Purpose: record RuleResult(String text, boolean changed, String explanation) with static helpers unchanged(String text) and changed(String text, String explanation).
+
+File: src/main/java/com/tuganire/postprocessor/ProcessedTranslation.java
+Purpose: record ProcessedTranslation(String text, List<String> appliedCorrections).
+
+File: src/main/java/com/tuganire/config/TtsConfig.java, SttConfig.java, LlmConfig.java
+Purpose: @ConfigurationProperties records binding tuganire.tts (defaultProvider, kinyProvider, frenchProvider), tuganire.stt (defaultProvider), tuganire.llm (defaultProvider, fallbackProvider).
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. LlmProvider, TtsProvider, SttProvider and CorrectionRule are interfaces; RuleResult, ProcessedTranslation are records.
+3. TtsConfig/SttConfig/LlmConfig bind from application.yml without binding errors at startup (verified by app boot in dev profile).
+4. None of these files import org.springframework.ai.* (provider abstractions stay framework-agnostic).
+5. RuleResult.unchanged(text) returns changed=false; RuleResult.changed(text, why) returns changed=true.
+6. TtsProvider declares a default warmup(Locale) method.
+
+NOTES
+
+Do not implement any provider here — only the contracts. Implementations and factories arrive in Tasks 10 (LLM), 13 (TTS) and 14 (STT). Keeping translateStructured optional avoids forcing every LLM provider to support structured output.

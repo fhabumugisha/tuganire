@@ -1,0 +1,55 @@
+TASK 18 — REST Controllers, Validation and Exception Handling
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): controllers return DTOs (records), never entities; throw typed exceptions (ResourceNotFoundException, BusinessException) not ResponseStatusException; @Valid on request bodies; Lombok @RequiredArgsConstructor. A GlobalExceptionHandler (@ControllerAdvice) maps typed exceptions to proper status codes. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 6 (REST endpoints table) and section 4 (native API versioning: @PostMapping(value="/translate", version="1") with spring.mvc.apiversion.use.path-segment: v → URL /api/v1/translate). Controllers live in their feature packages: TranslationController in com.tuganire.translation, FeedbackController in com.tuganire.feedback, a SessionController/MetaController in com.tuganire.conversation (sessions, languages, providers). The GlobalExceptionHandler lives in com.tuganire.shared.exception. Endpoints: POST /api/v1/sessions, POST /api/v1/translate, POST /api/v1/audio/translate, POST /api/v1/feedback, GET /api/v1/languages, GET /api/v1/providers, PUT /api/v1/providers/tts.
+
+TECH STACK AND BEST PRACTICES
+
+Spring Boot 4 native API versioning — annotate mappings with version="1" under @RequestMapping("/api"); rely on spring.mvc.apiversion.use.path-segment: v (Task 01). Bean Validation (@Valid) on TranslationRequest/FeedbackRequest. Multipart for POST /audio/translate (MultipartFile audio + src/tgt params). Return records only. Jackson 3 serialization (tools.jackson.*) is automatic — do not add Jackson 2 annotations. SpringDoc OpenAPI annotations optional but encouraged (Swagger UI). Delegate all logic to services (TranslationService Task 16, ConversationService Task 17, FeedbackService Task 09); controllers are thin.
+
+CONTEXT
+
+This exposes the public API consumed by the web POC (Task 20), the Android app (Task 21) and future clients (PRD: "Backend unifié, clients multiples"). It is the demo surface for Sprint 1 ("curl POST /translate returns a correct FR→RW translation"). Runs in Wave 6 alongside the conversation service.
+
+DEPENDENCIES
+
+Requires Task 16 (TranslationService) and Task 09 (FeedbackService). Uses ConversationService (Task 17) for the audio endpoint — if Task 17 lands in the same wave, the audio endpoint may be wired last; sessions/translate/feedback/meta endpoints do not need Task 17.
+
+PARALLEL GROUP
+
+Group F (Application services), Wave 6. Runs in parallel with Task 17 — Task 17 owns ConversationService/AudioController; this task owns TranslationController, FeedbackController, the meta/session controller and the exception handler. No shared file. (The /audio/translate endpoint calls ConversationService; coordinate so only this task defines TranslationController and only Task 17 defines AudioController.)
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/translation/TranslationController.java
+Purpose: @RestController @RequestMapping("/api"). POST translate (version="1") accepting @Valid TranslationRequest → TranslationResponse via TranslationService. POST audio/translate (version="1", multipart) → calls ConversationService.processAudio and returns a DTO with transcript/translation/audioUrl.
+
+File: src/main/java/com/tuganire/feedback/FeedbackController.java
+Purpose: POST feedback (version="1") accepting @Valid FeedbackRequest → 202/200; delegates to FeedbackService.submit.
+
+File: src/main/java/com/tuganire/conversation/SessionController.java
+Purpose: POST sessions (version="1") returns {sessionId (UUID), websocketUrl "/ws/conversation/{id}"}. GET languages returns the supported language list. GET providers returns available TTS/STT/LLM provider names (from the factories). PUT providers/tts changes the current TTS provider (admin/runtime switch, ADR-004).
+
+File: src/main/java/com/tuganire/shared/exception/GlobalExceptionHandler.java
+Purpose: @ControllerAdvice mapping ResourceNotFoundException→404, BusinessException→400, MethodArgumentNotValidException/BindException→400 with field errors, rate-limit→429, and a catch-all→500, all returning a small error record {code, message, timestamp}. Reuse the existing handler if Task 01 preserved one; extend it rather than duplicating.
+
+File: src/main/java/com/tuganire/shared/exception/ResourceNotFoundException.java (if not preserved by Task 01)
+Purpose: Typed RuntimeException for 404s.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds; ./mvnw -B -ntp clean verify passes.
+2. curl -X POST http://localhost:8080/api/v1/translate with a valid JSON body returns 200 and a TranslationResponse JSON.
+3. POST /api/v1/translate with a missing sourceText returns 400 with field-level error info (Bean Validation via GlobalExceptionHandler), NOT 500.
+4. POST /api/v1/sessions returns 200 with a sessionId (UUID) and a websocketUrl.
+5. GET /api/v1/providers lists the registered TTS/STT/LLM provider names.
+6. GET /api/v1/feedback path does not exist, but POST /api/v1/feedback with a valid body returns success and persists via FeedbackService.
+
+NOTES
+
+The URLs are /api/v1/... by virtue of native API versioning + path-segment config — do NOT hardcode "/v1" in @RequestMapping. Throw typed exceptions only; a ResponseStatusException would be caught by the catch-all and rendered as 500 (CLAUDE.md gotcha). Keep controllers thin; no business logic. Swagger/OpenAPI docs are encouraged for the Sprint-5 deliverable.

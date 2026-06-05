@@ -1,54 +1,39 @@
 spring:
   main:
     banner-mode: off
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
-
   jpa:
     hibernate:
       ddl-auto: none
     open-in-view: false
-
   flyway:
     enabled: true
     locations: classpath:db/migration
-
-  mail:
-    host: localhost
-    port: 25
-    username: ""
-    password: ""
-
-  cloud:
-    aws:
-      s3:
-        enabled: false
-      region:
-        static: eu-west-1
-      credentials:
-        access-key: test
-        secret-key: test
-
+  data:
+    redis:
+      # Intentionally unreachable — NoOpCacheConfig in AbstractIntegrationTest provides a @Primary no-op bean
+      url: redis://localhost:16379
   ai:
     openai:
       api-key: test-key
-
-stripe:
-  api-key: sk_test_placeholder
-  webhook-secret: whsec_test_placeholder
-  price-id-monthly: price_test_monthly
-  price-id-yearly: price_test_yearly
+    anthropic:
+      api-key: test-key
 
 tuganire:
-  base-url: http://localhost:8080
-
-app:
-  mail:
-    from: noreply@test.local
-  storage:
-    s3:
-      enabled: false
-
-sentry:
-  dsn: ""
+  mms:
+    base-url: http://localhost:8000
+  cache:
+    translation-ttl-days: 1
+  rate-limit:
+    requests-per-minute: 1000
+    requests-per-day: 100000
+  llm:
+    default-provider: openai
+    fallback-provider: anthropic
+  tts:
+    default-provider: openai
+    kiny-provider: mms
+    french-provider: openai
+  stt:
+    default-provider: whisper
+  security:
+    allowed-origins: http://localhost

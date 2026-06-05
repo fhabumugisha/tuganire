@@ -1,0 +1,49 @@
+TASK 17 — Conversation Service and Audio Pipeline (STT → Translate → TTS)
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): service interface + *Impl, Lombok, no inline duplicated literals. Java 21 virtual threads — NEVER use synchronized (it pins carrier threads); use ReentrantLock if locking is needed. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 4 ("Virtual threads pour la concurrence" — ConversationService.processAudio with StructuredTaskScope) and section 5/6 (full audio pipeline; AUDIO_READY returns an audioUrl). Place ConversationService (interface) + ConversationServiceImpl in com.tuganire.conversation. It composes SttService (Task 14), TranslationService (Task 16) and TtsService (Task 13). Generated audio is stored ephemerally (Redis, TTL 5 min, ARCHI section 10) and exposed via a short-lived audio URL (e.g. /audio/{id}.mp3).
+
+TECH STACK AND BEST PRACTICES
+
+Java 21 StructuredTaskScope (preview/finalized in 21 — use --enable-preview only if required by the JDK; otherwise use a simple virtual-thread Executor: Executors.newVirtualThreadPerTaskExecutor()). Pipeline: transcribe audio (STT) → translate transcript (TranslationService) → synthesize target audio (TtsService) → store bytes in Redis with a generated id and TTL 5 min → return a result carrying transcript, translation and audioUrl. Run independent steps concurrently where safe (e.g. TTS warmup during STT, as ARCHI shows). Use CompletableFuture or structured concurrency; no synchronized. Emit ConversationEvent values (Task 04) for the streaming path used by the WebSocket (Task 19).
+
+CONTEXT
+
+This is the end-to-end voice loop that delivers the MVP success metric — a 3-minute useful conversation (PRD US-01/US-02, Sprint 2 "envoi d'un .wav, retour d'un .mp3"). The non-streaming REST audio endpoint (Task 18, POST /api/v1/audio/translate) and the streaming WebSocket (Task 19) both call this service.
+
+DEPENDENCIES
+
+Requires Task 13 (TtsService), Task 14 (SttService) and Task 16 (TranslationService). Events from Task 04.
+
+PARALLEL GROUP
+
+Group F (Application services), Wave 6. Runs in parallel with Task 18 (REST controllers) — distinct files (this owns ConversationService; Task 18 owns the controllers). No shared file.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/conversation/ConversationService.java
+Purpose: interface with a non-streaming method, e.g. AudioTranslationResult processAudio(byte[] audio, Locale srcLang, Locale tgtLang, String sessionId); and a streaming variant Flux/stream or a callback emitting ConversationEvent (choose a simple Consumer<ConversationEvent> sink for MVP). Define record AudioTranslationResult(String transcript, TranslationResponse translation, String audioUrl, long durationMs).
+
+File: src/main/java/com/tuganire/conversation/ConversationServiceImpl.java
+Purpose: @Service @RequiredArgsConstructor @Slf4j. processAudio: STT transcribe → TranslationService.translate → TtsService.synthesize → store audio in Redis (id + TTL 5 min) → build AudioTranslationResult with audioUrl "/audio/{id}.mp3". Use a virtual-thread executor for concurrent warmup/STT. The streaming variant emits SpeechStarted, FinalTranscript, TranslationReady, AudioReady (and ErrorOccurred on failure) via the sink.
+
+File: src/main/java/com/tuganire/conversation/AudioStore.java (+ Impl)
+Purpose: Store/retrieve ephemeral audio bytes by id in Redis with a 5-minute TTL; getAudio(id) returns Optional<byte[]>. Used by the /audio/{id}.mp3 controller endpoint (added in Task 18 or here as a tiny @RestController AudioController — place AudioController here to keep the audio concern together).
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. processAudio returns an AudioTranslationResult whose transcript, translation and audioUrl are all populated for a valid input (verified with mocked Stt/Translation/Tts collaborators in Task 22).
+3. Generated audio is stored in Redis with a 5-minute TTL and is retrievable via AudioStore.getAudio(id) before expiry.
+4. No source file in this task uses the synchronized keyword (virtual-thread safe).
+5. The streaming path emits, in order, at least FinalTranscript, TranslationReady and AudioReady ConversationEvents for a successful turn, and ErrorOccurred on failure.
+6. GET /audio/{id}.mp3 streams the stored bytes with Content-Type audio/mpeg and 404 (typed) when expired/missing.
+
+NOTES
+
+If StructuredTaskScope requires preview flags on the target JDK, prefer Executors.newVirtualThreadPerTaskExecutor() to avoid build complications — the goal is concurrency without WebFlux (ADR-003), not a specific API. Audio is never persisted to disk or DB (ARCHI section 10). The WebSocket handler (Task 19) reuses the streaming variant; the REST audio endpoint (Task 18) uses the non-streaming one.

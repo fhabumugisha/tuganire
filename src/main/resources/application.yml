@@ -1,29 +1,44 @@
-server:
-  forward-headers-strategy: native
-  port: ${PORT:8080}
-
 spring:
   application:
-    name: tuganire
-
+    name: tuganire-backend
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:}
+      # Read/connect timeout applied to every OpenAI HTTP call. Keep it short enough that a stuck
+      # primary call doesn't hold the request thread — the orchestrator will then retry via the
+      # configured fallback provider (see TranslationServiceImpl.translateWithFallback).
+      timeout: 20s
       chat:
         options:
-          model: gpt-4o-mini
-          temperature: 0.7
-      image:
+          # NOTE: model + temperature are set per-call by OpenAiLlmProvider
+          # (the active model lives in LlmSettings; GPT-5.x rejects custom temperature
+          # so we omit it for those models). Don't put `temperature` here — it
+          # becomes a default merged into every call and breaks GPT-5.x.
+          model: gpt-5.5
+      audio:
+        transcription:
+          options:
+            model: whisper-1
+        speech:
+          options:
+            model: gpt-4o-mini-tts
+            voice: alloy
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      # Same rationale as `spring.ai.openai.timeout` — caps the time a Claude call can hold the
+      # request thread before the fallback kicks in.
+      timeout: 20s
+      chat:
         options:
-          model: gpt-image-1
-          size: 1536x1024
-
+          # NOTE: model + temperature are set per-call by ClaudeLlmProvider
+          # (the active model lives in LlmSettings). Don't put `temperature` here
+          # — it would override the per-call value silently.
+          model: claude-haiku-4-5-20251001
   datasource:
-    url: jdbc:postgresql://${DATABASE_HOST:localhost:5432/tuganire}?user=${DATABASE_USERNAME:postgres}&password=${DATABASE_PASSWORD:postgres}&sslmode=prefer
-    username: ${DATABASE_USERNAME:postgres}
-    password: ${DATABASE_PASSWORD:postgres}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/tuganire}
+    username: ${DATABASE_USER:tuganire}
+    password: ${DATABASE_PASSWORD:tuganire}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
       ddl-auto: none
@@ -32,19 +47,22 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
     show-sql: false
-
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+  threads:
+    virtual:
+      enabled: true
   thymeleaf:
     cache: true
     prefix: classpath:/templates/
     suffix: .html
     encoding: UTF-8
     mode: HTML
-
   messages:
     basename: messages
     encoding: UTF-8
     fallback-to-system-locale: false
-
   web:
     locale: fr
     resources:
@@ -54,18 +72,9 @@ spring:
           cache-public: true
           must-revalidate: true
         use-last-modified: true
-
   mvc:
     async:
       request-timeout: 300000
-
-  webflux:
-    client:
-      timeout:
-        connect: 10s
-        read: 60s
-        write: 10s
-
   servlet:
     multipart:
       enabled: true
@@ -73,92 +82,76 @@ spring:
       max-request-size: 20MB
       file-size-threshold: 2KB
 
-  cloud:
-    aws:
-      credentials:
-        access-key: ${AWS_ACCESS_KEY_ID:changeme}
-        secret-key: ${AWS_SECRET_ACCESS_KEY:changeme}
-      region:
-        static: ${AWS_REGION:us-east-1}
-      s3:
-        enabled: ${AWS_S3_ENABLED:false}
-
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:changeme}
-    password: ${MAIL_PASSWORD:changeme}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
-
-app:
-  mail:
-    from: ${MAIL_FROM:noreply@example.com}
-  storage:
-    s3:
-      bucket-name: ${AWS_S3_BUCKET_NAME:tuganire-storage}
-      prefix: ${AWS_S3_PREFIX:}
-    local:
-      directory: ${LOCAL_STORAGE_DIR:${java.io.tmpdir}/tuganire-storage}
-
-stripe:
-  api-key: ${STRIPE_API_KEY:sk_test_placeholder}
-  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
-  price-id-monthly: ${STRIPE_PRICE_ID_MONTHLY:price_monthly_placeholder}
-  price-id-yearly: ${STRIPE_PRICE_ID_YEARLY:price_yearly_placeholder}
-  success-url: ${BASE_URL:http://localhost:8080}/payment/success?session_id={CHECKOUT_SESSION_ID}
-  cancel-url: ${BASE_URL:http://localhost:8080}/payment/cancel
+server:
+  forward-headers-strategy: native
+  port: ${PORT:8080}
 
 tuganire:
-  base-url: ${BASE_URL:http://localhost:8080}
-  oauth:
-    google:
-      # Leave blank to keep social login disabled. When set, a "Continue with Google" button appears on /login
-      # and the OAuth2 client is wired in SecurityConfig.
-      client-id: ${GOOGLE_CLIENT_ID:}
-      client-secret: ${GOOGLE_CLIENT_SECRET:}
-  freemium:
-    max-items: 40
+  tts:
+    default-provider: openai
+    kiny-provider: mms
+    french-provider: openai
+  stt:
+    default-provider: whisper
+  llm:
+    default-provider: openai
+    fallback-provider: anthropic
+    # Models selectable in /settings for FR→RW translation (runtime-switchable, cross-provider).
+    # Each option carries the provider that owns it so the pipeline routes correctly.
+    default-translation-model: gpt-5.5
+    translation-models:
+      - id: gpt-5.5
+        provider: openai
+        label: GPT-5.5 (OpenAI)
+      - id: gpt-5.4-mini
+        provider: openai
+        label: GPT-5.4 mini (OpenAI)
+      - id: claude-sonnet-4-6
+        provider: anthropic
+        label: Claude Sonnet 4.6 (Anthropic)
+      - id: gpt-4o
+        provider: openai
+        label: GPT-4o (OpenAI, ancien)
+    openai:
+      # OpenAI models that reject a custom `temperature` (HTTP 400) and only accept their server-side default.
+      # OpenAiLlmProvider omits `temperature` when calling any model id listed here. Add a new GPT-5.x reasoning
+      # model id whenever one ships; do NOT rely on a name prefix — the lock is opt-in by exact id.
+      temperature-locked-models:
+        - gpt-5.5
+        - gpt-5.4-mini
+  # Per-model LLM pricing in USD per 1,000 tokens (used for admin usage-cost estimates).
   ai-models:
     models:
-      openai-gpt4o-mini:
-        name: gpt-4o-mini
-        enabled: true
-        input-rate-per-million-tokens: 0.15
-        output-rate-per-million-tokens: 0.60
-        currency: USD
-      openai-gpt4o:
-        name: gpt-4o
-        enabled: true
-        input-rate-per-million-tokens: 2.50
-        output-rate-per-million-tokens: 10.00
-        currency: USD
-      anthropic-haiku:
-        name: claude-haiku-4-5
-        enabled: true
-        input-rate-per-million-tokens: 1.00
-        output-rate-per-million-tokens: 5.00
-        currency: USD
-      anthropic-sonnet:
-        name: claude-sonnet-4-6
-        enabled: true
-        input-rate-per-million-tokens: 3.00
-        output-rate-per-million-tokens: 15.00
-        currency: USD
+      gpt-5.5:
+        input-per1k: 0.005
+        output-per1k: 0.03
+      gpt-5.4-mini:
+        input-per1k: 0.00075
+        output-per1k: 0.0045
+      gpt-4o:
+        input-per1k: 0.0025
+        output-per1k: 0.01
+      claude-sonnet-4-6:
+        input-per1k: 0.003
+        output-per1k: 0.015
+      claude-haiku-4-5-20251001:
+        input-per1k: 0.001
+        output-per1k: 0.005
+  mms:
+    base-url: ${MMS_TTS_URL:http://localhost:8000}
+  cache:
+    translation-ttl-days: 30
+  rate-limit:
+    requests-per-minute: 60
+    requests-per-day: 1000
+  security:
+    allowed-origins: ${ALLOWED_ORIGINS:https://tuganire.app,http://localhost:8080}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,loggers
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       probes:
@@ -170,18 +163,20 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  otlp:
+    metrics:
+      export:
+        endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
 
 info:
   app:
     name: ${spring.application.name}
     version: '@project.version@'
 
-sentry:
-  dsn: ${SENTRY_DSN:}
-  environment: ${SPRING_PROFILES_ACTIVE:default}
-  traces-sample-rate: 0.1
-  send-default-pii: false
-
 logging:
   level:
     com.tuganire: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"

@@ -1,0 +1,58 @@
+TASK 12 — Kinyarwanda Post-Processor and the 5 Correction Rules
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): each rule implements the CorrectionRule interface (Task 07), Lombok where useful, substitution tables as constants. This is the highest-value business logic in the product — write it carefully and make it unit-test-friendly (pure functions, no I/O). Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5 ("KinyarwandaPostProcessor" + PluralRespectRule example) and PRD section 4 (the 5 documented structural error categories). The CorrectionRule interface, RuleResult and ProcessedTranslation records already exist (Task 07). Place KinyarwandaPostProcessor in com.tuganire.postprocessor and the five rules in com.tuganire.postprocessor.rules. The processor injects the five rules as a List<CorrectionRule> and applies them in order, accumulating applied rule names.
+
+TECH STACK AND BEST PRACTICES
+
+Plain Java 21, regex-based substitutions with case-insensitive matching ("(?i)..."). No network/DB I/O in rules (keeps them fast and testable; Task 22 unit-tests each rule). Each rule returns RuleResult.unchanged(text) when target language is not "rw" or no change applies. Keep substitution maps as private static final constants. The five rules map to PRD's 5 categories: (1) InfixPronounRule — missing pronominal infix (e.g. "kurya"→"kundya"); (2) PluralRespectRule — tu/vous + plural of respect (e.g. "ndakwinginze"→"ndabinginze", "mpa"→"mumpe"); (3) AntiPolitenessStackingRule — collapse stacked politeness ("mwambabarira ... ndabinginze"→"ndabinginze"); (4) AntiHallucinationRule — detect invented words (e.g. "arakool"→"ni cool", "ndziho"→"umutegetsi wanjye") using a known-invention map; (5) AntiSyntacticCalqueRule — replace French calques with direct bantu verbs ("mwampa kugabanyirizwa"→"mwangabanyiriza").
+
+CONTEXT
+
+ADR-005 and the PRD validation are the heart of Tuganire: no LLM masters conversational Kinyarwanda, so 5 corrective rules run after the LLM to guarantee quality independent of model choice. The processor is invoked by TranslationService (Task 16) on every LLM (non-golden, non-cache) output. The semantic regression test (Task 22 / TranslationQualityIT) measures the quality these rules deliver.
+
+DEPENDENCIES
+
+Requires Task 07 (CorrectionRule, RuleResult, ProcessedTranslation).
+
+PARALLEL GROUP
+
+Group D (Pipeline components), Wave 4. Runs in parallel with Tasks 10, 11, 13, 14, 15 — owns com.tuganire.postprocessor exclusively.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/postprocessor/KinyarwandaPostProcessor.java
+Purpose: @Component injecting the five rule beans (constructor) as an ordered List<CorrectionRule>; process(String llmOutput, Locale src, Locale tgt) iterates rules, applies changes, records each changed rule's name(), returns ProcessedTranslation(currentText, appliedRuleNames).
+
+File: src/main/java/com/tuganire/postprocessor/rules/PluralRespectRule.java
+Purpose: @Component implementing CorrectionRule, name()="PLURAL_RESPECT", substitution map per ARCHI section 5 (ndakwinginze→ndabinginze, wamfasha→mwamfasha, mpa→mumpe, mbwira→mwambwira, ...). Only applies when tgt is "rw".
+
+File: src/main/java/com/tuganire/postprocessor/rules/InfixPronounRule.java
+Purpose: @Component, name()="INFIX_PRONOUN"; insert/repair missing pronominal infixes (e.g. kurya→kundya) via a substitution map.
+
+File: src/main/java/com/tuganire/postprocessor/rules/AntiPolitenessStackingRule.java
+Purpose: @Component, name()="ANTI_POLITENESS_STACKING"; detect stacked politeness markers and reduce to a single form.
+
+File: src/main/java/com/tuganire/postprocessor/rules/AntiHallucinationRule.java
+Purpose: @Component, name()="ANTI_HALLUCINATION"; map known invented words to corrections (arakool→ni cool, ndziho→umutegetsi wanjye, ...).
+
+File: src/main/java/com/tuganire/postprocessor/rules/AntiSyntacticCalqueRule.java
+Purpose: @Component, name()="ANTI_SYNTACTIC_CALQUE"; replace French-calque constructions with direct bantu verbs (mwampa kugabanyirizwa→mwangabanyiriza).
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. Each of the five rules implements CorrectionRule with a distinct, stable name() value.
+3. For tgt!="rw", every rule returns RuleResult with changed=false and the input text unchanged.
+4. PluralRespectRule turns "ndakwinginze" into "ndabinginze" (case-insensitive) and marks changed=true.
+5. KinyarwandaPostProcessor.process returns a ProcessedTranslation whose appliedCorrections lists exactly the rule names that changed the text, in application order.
+6. Rules perform no DB or network I/O (pure string transforms).
+
+NOTES
+
+Substitution tables are seeded from PRD section 4 and ARCHI section 5 and will be enriched later from the golden dictionary and feedback loop — keep them in constants so enrichment is a data change, not a code change. Order matters: anti-hallucination and plural-respect before calque cleanup gives the most natural output; document the chosen order in a comment. These rules are the primary focus of unit testing in Task 22.

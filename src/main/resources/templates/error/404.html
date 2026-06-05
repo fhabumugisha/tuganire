@@ -2,20 +2,13 @@
 <html xmlns:th="http://www.thymeleaf.org" xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout/base}">
 <head>
-    <title th:text="#{error.404.title}">Page non trouvée</title>
+    <title>Page non trouvée</title>
 </head>
 <body>
     <div layout:fragment="content">
-        <div class="hero min-h-[60vh]">
-            <div class="hero-content text-center">
-                <div class="max-w-md">
-                    <h1 class="text-9xl font-bold text-primary">404</h1>
-                    <p class="text-2xl font-semibold my-4" th:text="#{error.404.title}">Page non trouvée</p>
-                    <p class="mb-8" th:text="#{error.404.message}">La page que vous recherchez n'existe pas.</p>
-                    <a th:href="@{/}" class="btn btn-primary" th:text="#{error.back.home}">Retour à l'accueil</a>
-                </div>
-            </div>
-        </div>
+        <h1>404 — Page non trouvée</h1>
+        <p th:text="${error}">La page que vous recherchez n'existe pas.</p>
+        <a th:href="@{/}">Retour à l'accueil</a>
     </div>
 </body>
 </html>

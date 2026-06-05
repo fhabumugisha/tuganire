@@ -1,0 +1,51 @@
+TASK 06 — Internationalization Message Bundles (FR / RW / EN)
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): ALL user-facing UI/form/table text must come from message properties — no hardcoded strings. French is the default locale (spring.web.locale: fr). Keys are dot-namespaced and stable. Run ./mvnw spotless:apply before compiling (properties files are not formatted but keep the build green).
+
+ARCHITECTURE
+
+See PRD section 3 ("Internationalisation": UI bilingual FR + RW, EN optional) and the UX mockups in PRD section 5 (button labels "Parler français" / "Kuvuga ikinyaRW", top bar, feedback). The web POC (Task 20) and split-screen/settings (Task 23) resolve all their text through these bundles via Thymeleaf #{...}. Files live in src/main/resources.
+
+TECH STACK AND BEST PRACTICES
+
+Spring MessageSource with messages.properties (FR default), messages_rw.properties (Kinyarwanda), messages_en.properties (English). UTF-8 encoding (Boot defaults to UTF-8 for properties in 4.x). Ensure spring.web.locale: fr and a LocaleResolver that supports switching (AcceptHeaderLocaleResolver is fine for MVP; a session/query resolver can be added later). Keep keys identical across the three files.
+
+CONTEXT
+
+The app must be usable by BOTH Marc (FR) and Mukamana (RW) on the same screen (PRD vision, US-01/US-02), so the UI is genuinely bilingual, not just localized. Centralizing strings now means the web tasks never hardcode text. This is a leaf task with no downstream code dependency beyond the web layer.
+
+DEPENDENCIES
+
+Requires Task 01 (project setup) to be complete.
+
+PARALLEL GROUP
+
+Group B (Contracts), Wave 2. Runs in parallel with Task 04 (DTOs) and Task 05 (Flyway) — distinct files.
+
+WHAT TO IMPLEMENT
+
+File: src/main/resources/messages.properties (French — default)
+Purpose: Define keys for: app.title; nav.settings, nav.mic, nav.stats; mode.twoButtons, mode.splitScreen; button.speakFrench (e.g. "Parler français"), button.speakKinyarwanda ("Kuvuga ikinyarwanda"); status.listening, status.translating; action.replay, action.thumbsUp, action.thumbsDown, action.reportBad; settings.title, settings.ttsProvider, settings.language; feedback.thanks; error.generic, error.sttFailed, error.audioTooShort; onboarding.step1/2/3.
+
+File: src/main/resources/messages_rw.properties (Kinyarwanda)
+Purpose: Same keys, Kinyarwanda values (e.g. button.speakKinyarwanda=Kuvuga ikinyarwanda, status.listening=Ndumva...). Use natural Kinyarwanda; mark any uncertain translation with a trailing comment in a README note rather than inline.
+
+File: src/main/resources/messages_en.properties (English — optional locale)
+Purpose: Same keys, English values.
+
+File: src/main/java/com/tuganire/config/LocaleConfig.java (only if Task 01 did not already configure locale)
+Purpose: Declare LocaleResolver and, if desired, a LocaleChangeInterceptor on ?lang= so the demo can switch languages. Skip if spring.web.locale + default resolver already cover MVP needs — document the decision.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds; the app starts without "missing message" warnings on the home view (once Task 20 exists).
+2. messages.properties, messages_rw.properties and messages_en.properties contain the identical key set (no key present in one file but missing in another).
+3. All keys from the WHAT TO IMPLEMENT list exist in every bundle.
+4. French is the default locale (spring.web.locale: fr) and English/Kinyarwanda resolve via Accept-Language or ?lang= switching.
+5. Files are UTF-8 and Kinyarwanda/French accented characters render correctly.
+
+NOTES
+
+Native Kinyarwanda wording should be reviewed by a native speaker later; provide best-effort values now and list uncertain keys in a short comment block at the top of messages_rw.properties. Do not put backend log messages or exception messages here unless they are shown to users.

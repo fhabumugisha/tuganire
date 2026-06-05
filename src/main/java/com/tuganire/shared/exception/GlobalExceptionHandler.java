@@ -1,196 +1,195 @@
 package com.tuganire.shared.exception;
 
-import com.tuganire.shared.service.FreemiumService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import java.util.HashMap;
-import java.util.Map;
+import java.net.URI;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.ui.Model;
 import org.springframework.validation.BindException;
-import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
- * Global exception handler for the application. Handles all exceptions thrown by controllers and provides appropriate
- * error responses.
+ * Centralised exception handler for all REST controllers.
+ *
+ * <p>
+ * Returns RFC 9457 {@link ProblemDetail} responses so that every error has a consistent machine-readable shape. Typed
+ * exceptions map to specific HTTP status codes; all others fall through to the 500 catch-all.
+ *
+ * <p>
+ * Thymeleaf MVC controllers still work: returning a {@link ResponseEntity} from a {@link RestControllerAdvice} does not
+ * prevent view-based controllers from rendering templates normally — Spring dispatches to the correct handler based on
+ * the exception type and the requesting content-type.
  */
-@ControllerAdvice
+@RestControllerAdvice
 @Slf4j
 @RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
+    private static final URI TYPE_BUSINESS = URI.create("https://tuganire.com/errors/business-error");
+    private static final URI TYPE_NOT_FOUND = URI.create("https://tuganire.com/errors/not-found");
+    private static final URI TYPE_VALIDATION = URI.create("https://tuganire.com/errors/validation-failed");
+    private static final URI TYPE_UNAUTHORIZED = URI.create("https://tuganire.com/errors/unauthorized");
+    private static final URI TYPE_RATE_LIMIT = URI.create("https://tuganire.com/errors/rate-limit-exceeded");
+    private static final URI TYPE_INTERNAL = URI.create("https://tuganire.com/errors/internal-error");
+
+    private static final String PROP_TIMESTAMP = "timestamp";
+    private static final String PROP_ERRORS = "errors";
+
     private final MessageSource messageSource;
-    private final FreemiumService freemiumService;
 
     /**
-     * Handles business logic exceptions. Returns a user-friendly error page with the localized error message.
+     * {@link BusinessException} → 400 Bad Request.
+     *
+     * <p>
+     * The message key is resolved from the {@link MessageSource} so that the user-facing text is locale-aware.
      */
     @ExceptionHandler(BusinessException.class)
-    public String handleBusinessException(BusinessException ex, Model model) {
-        log.warn("Business exception: {}", ex.getMessageKey());
-
-        String message = messageSource.getMessage(ex.getMessageKey(), new Object[]{freemiumService.getMaxItems()},
-                ex.getMessageKey(), LocaleContextHolder.getLocale());
-
-        return prepareErrorView(model, message);
+    public ResponseEntity<ProblemDetail> handleBusinessException(BusinessException ex, HttpServletRequest request) {
+        log.warn("Business exception: key={}", ex.getMessageKey());
+        String message = messageSource.getMessage(ex.getMessageKey(), null, ex.getMessageKey(),
+                LocaleContextHolder.getLocale());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, message);
+        problem.setType(TYPE_BUSINESS);
+        problem.setTitle("Business rule violation");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**
-     * Handles illegal argument exceptions. Returns an error page with the error message.
+     * {@link IllegalArgumentException} → 400 Bad Request.
      */
     @ExceptionHandler(IllegalArgumentException.class)
-    public String handleIllegalArgumentException(IllegalArgumentException ex, Model model) {
-        log.error("Invalid argument: {}", ex.getMessage());
-        return prepareErrorView(model, ex.getMessage());
+    public ResponseEntity<ProblemDetail> handleIllegalArgument(IllegalArgumentException ex,
+            HttpServletRequest request) {
+        log.warn("Invalid argument: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setType(TYPE_BUSINESS);
+        problem.setTitle("Invalid argument");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**
-     * Handles file size exceeded exceptions.
+     * {@link MethodArgumentNotValidException} → 400 Bad Request with per-field error list.
+     *
+     * <p>
+     * This covers {@code @Valid} failures on {@code @RequestBody} parameters.
      */
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public String handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex, Model model) {
-        log.error("File size exceeded: {}", ex.getMessage());
-
-        String message = messageSource.getMessage("error.upload.size-exceeded", null,
-                "File size exceeded the maximum allowed size", LocaleContextHolder.getLocale());
-
-        return prepareErrorView(model, message);
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ProblemDetail> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+            HttpServletRequest request) {
+        log.warn("Validation failed: {}", ex.getBindingResult().getAllErrors());
+        ProblemDetail problem = buildValidationProblem(ex, request);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**
-     * Handles file upload exceptions.
-     */
-    @ExceptionHandler(FileUploadException.class)
-    public String handleFileUploadException(FileUploadException ex, Model model) {
-        log.error("File upload failed: {}", ex.getMessage(), ex);
-
-        String baseMessage = messageSource.getMessage("error.upload.failed", null, "Failed to upload file",
-                LocaleContextHolder.getLocale());
-
-        return prepareErrorView(model, baseMessage + ": " + ex.getMessage());
-    }
-
-    /**
-     * Handles validation errors from form submissions. Returns a 400 Bad Request error page.
+     * {@link BindException} → 400 Bad Request with per-field error list.
+     *
+     * <p>
+     * This covers form-binding and query-parameter validation failures.
      */
     @ExceptionHandler(BindException.class)
-    public String handleValidationException(BindException ex, Model model) {
-        log.warn("Validation failed: {}", ex.getBindingResult().getAllErrors());
-
-        String message = messageSource.getMessage("validation.failed", null, "Validation failed",
-                LocaleContextHolder.getLocale());
-
-        model.addAttribute("error", message);
-        model.addAttribute("errors", ex.getBindingResult().getAllErrors());
-        return "error/400";
+    public ResponseEntity<ProblemDetail> handleBindException(BindException ex, HttpServletRequest request) {
+        log.warn("Bind validation failed: {}", ex.getBindingResult().getAllErrors());
+        ProblemDetail problem = buildValidationProblem(ex, request);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
     /**
-     * Handles resource not found exceptions. Returns a 404 Not Found error page.
+     * {@link ResourceNotFoundException} → 404 Not Found.
      */
     @ExceptionHandler(ResourceNotFoundException.class)
-    public String handleResourceNotFoundException(ResourceNotFoundException ex, Model model) {
-        log.error("Resource not found: {}", ex.getMessage(), ex);
-        model.addAttribute("error", ex.getMessage());
-        return "error/404";
+    public ResponseEntity<ProblemDetail> handleResourceNotFound(ResourceNotFoundException ex,
+            HttpServletRequest request) {
+        log.warn("Resource not found: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setType(TYPE_NOT_FOUND);
+        problem.setTitle("Resource not found");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
     }
 
     /**
-     * Handles unauthorized access exceptions. Redirects to the login page with an error message.
+     * {@link UnauthorizedException} → 401 Unauthorized.
      */
     @ExceptionHandler(UnauthorizedException.class)
-    public String handleUnauthorizedException(UnauthorizedException ex, RedirectAttributes redirectAttributes) {
-        log.error("Unauthorized access: {}", ex.getMessage(), ex);
-        redirectAttributes.addFlashAttribute("error", ex.getMessage());
-        return "redirect:/login";
+    public ResponseEntity<ProblemDetail> handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
+        log.warn("Unauthorized access: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setType(TYPE_UNAUTHORIZED);
+        problem.setTitle("Unauthorized");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(problem);
     }
 
     /**
-     * Handles data integrity violations (unique constraints, foreign keys).
+     * {@link NoResourceFoundException} → 404 Not Found.
+     *
+     * <p>
+     * Raised by Spring when a request maps to no static resource (e.g. {@code /favicon.ico} or an unresolved webjar
+     * path). Without this handler the catch-all below would turn it into a misleading 500.
      */
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<String> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body("error.conflict");
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ProblemDetail> handleNoResourceFound(NoResourceFoundException ex,
+            HttpServletRequest request) {
+        log.debug("No static resource for {}", request.getRequestURI());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setType(TYPE_NOT_FOUND);
+        problem.setTitle("Resource not found");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);
     }
 
     /**
-     * Handles async request timeout exceptions from SSE connections.
-     */
-    @ExceptionHandler(AsyncRequestTimeoutException.class)
-    public ResponseEntity<Void> handleAsyncTimeout(AsyncRequestTimeoutException ex) {
-        log.warn("Async request timeout (SSE connection)", ex);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Handles rate limit exceeded exceptions. Returns HTTP 429 Too Many Requests with proper Retry-After header.
-     * Returns HTML fragment for HTMX requests, JSON for API clients.
-     */
-    @ExceptionHandler(TooManyRequestException.class)
-    public Object handleTooManyRequestException(TooManyRequestException ex, HttpServletRequest request,
-            HttpServletResponse response, Model model) {
-        log.warn("Rate limit exceeded: {} {}", request.getMethod(), request.getRequestURI());
-
-        response.setHeader("X-Rate-Limit-Limit", String.valueOf(ex.getMaxRequests()));
-        response.setHeader("X-Rate-Limit-Remaining", String.valueOf(ex.getRemainingRequests()));
-        response.setHeader("X-Rate-Limit-Reset", String.valueOf(ex.getResetTime()));
-
-        long secondsUntilReset = Math.max(1, (ex.getResetTime() - System.currentTimeMillis()) / 1000);
-        response.setHeader("Retry-After", String.valueOf(secondsUntilReset));
-
-        boolean isHtmxRequest = "true".equals(request.getHeader("HX-Request"));
-
-        if (isHtmxRequest) {
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            model.addAttribute("message", ex.getMessage());
-            model.addAttribute("resetTime", ex.getResetTime());
-            model.addAttribute("maxRequests", ex.getMaxRequests());
-            return "fragments/rate-limit :: error";
-        }
-
-        String errorMessage = messageSource.getMessage("rate.limit.error.title", null, "Too Many Requests",
-                LocaleContextHolder.getLocale());
-
-        Map<String, Object> body = new HashMap<>();
-        body.put("error", errorMessage);
-        body.put("message", ex.getMessage());
-        body.put("maxRequests", ex.getMaxRequests());
-        body.put("resetTime", ex.getResetTime());
-        body.put("retryAfter", secondsUntilReset);
-
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
-    }
-
-    /**
-     * Handles all unexpected exceptions. Returns a generic 500 Internal Server Error page.
+     * Catch-all → 500 Internal Server Error.
+     *
+     * <p>
+     * Never throw {@link org.springframework.web.server.ResponseStatusException} from controllers: it would be caught
+     * here and rendered as 500 (CLAUDE.md gotcha). Always throw a typed exception.
      */
     @ExceptionHandler(Exception.class)
-    public String handleGenericException(Exception ex, Model model) {
-        log.error("Unexpected error", ex);
-
+    public ResponseEntity<ProblemDetail> handleGenericException(Exception ex, HttpServletRequest request) {
+        log.error("Unexpected error at {}", request.getRequestURI(), ex);
         String message = messageSource.getMessage("error.unexpected", null, "An unexpected error occurred",
                 LocaleContextHolder.getLocale());
-
-        model.addAttribute("error", message);
-        return "error/500";
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, message);
+        problem.setType(TYPE_INTERNAL);
+        problem.setTitle("Internal server error");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
     }
 
-    /**
-     * Utility method to prepare an error view with an error message.
-     */
-    private String prepareErrorView(Model model, String errorMessage) {
-        model.addAttribute("error", errorMessage);
-        return "error/business-error";
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private ProblemDetail buildValidationProblem(BindException ex, HttpServletRequest request) {
+        String message = messageSource.getMessage("validation.failed", null, "Validation failed",
+                LocaleContextHolder.getLocale());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, message);
+        problem.setType(TYPE_VALIDATION);
+        problem.setTitle("Validation failed");
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty(PROP_TIMESTAMP, Instant.now());
+        problem.setProperty(PROP_ERRORS, ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> new FieldError(fe.getField(), fe.getDefaultMessage())).toList());
+        return problem;
+    }
+
+    /** Carries field-level validation error detail within a {@link ProblemDetail} response. */
+    public record FieldError(String field, String message) {
     }
 }

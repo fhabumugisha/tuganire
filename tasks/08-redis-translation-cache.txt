@@ -1,0 +1,49 @@
+TASK 08 — Redis Translation Cache
+
+PROJECT CONTEXT
+
+Tuganire backend, package com.tuganire. Conventions (CLAUDE.md): service interface + *Impl, Lombok (@RequiredArgsConstructor, @Slf4j), configuration in config/. Run ./mvnw spotless:apply before compiling.
+
+ARCHITECTURE
+
+See ARCHI.md section 5 (TranslationService calls cache.find(...) first and cache.put(...) after) and section 6 (tuganire.cache.translation-ttl-days: 30). The cache is the first stage of the pipeline and the source of the > 40% cache-hit target (PRD metrics). Place TranslationCache (interface) + RedisTranslationCache (impl) and CacheConfig in com.tuganire.cache.
+
+TECH STACK AND BEST PRACTICES
+
+Spring Data Redis with the Lettuce client (spring-boot-starter-data-redis, added in Task 01). Configure a RedisTemplate<String, TranslationResponse> or use a typed RedisCacheManager; for explicit control use RedisTemplate with a Jackson 3 serializer. IMPORTANT: Spring Boot 4 uses Jackson 3 (tools.jackson.*) — use the Boot-provided ObjectMapper / JacksonJsonRedisSerializer equivalent, do NOT import com.fasterxml.jackson.databind.ObjectMapper. Build a deterministic cache key from (sourceText, sourceLang, targetLang), e.g. a SHA-256 hex or a normalized "tuganire:tr:{src}:{tgt}:{hash}" string. Apply the configured TTL (translation-ttl-days). Audio responses are NOT cached here (audio is ephemeral, ARCHI section 10).
+
+CONTEXT
+
+Caching frequent translations cuts latency and OpenAI cost (PRD risks: "Coût API explose", "Latence > 3s"). TranslationService (Task 16) checks the cache before normalizer/golden/LLM and writes back afterward. This task is independent of the providers, so it runs in Wave 3.
+
+DEPENDENCIES
+
+Requires Task 04 (TranslationResponse DTO) to be complete.
+
+PARALLEL GROUP
+
+Group C (Core seams), Wave 3. Runs in parallel with Task 07 (interfaces) and Task 09 (feedback) — distinct package.
+
+WHAT TO IMPLEMENT
+
+File: src/main/java/com/tuganire/cache/TranslationCache.java
+Purpose: interface with Optional<TranslationResponse> find(String sourceText, Locale src, Locale tgt); and void put(String sourceText, Locale src, Locale tgt, TranslationResponse response);.
+
+File: src/main/java/com/tuganire/cache/RedisTranslationCache.java
+Purpose: @Service implementing TranslationCache using RedisTemplate. Build the key with a private helper; serialize TranslationResponse as JSON; set TTL from the injected cache TTL property. Annotate @ConditionalOnProperty so the app still boots if Redis is disabled in some test profile (fall back to a no-op/in-memory map if the property is off).
+
+File: src/main/java/com/tuganire/cache/CacheConfig.java
+Purpose: @Configuration declaring the RedisTemplate<String, TranslationResponse> (key serializer StringRedisSerializer, value serializer the Jackson 3 JSON serializer) and reading tuganire.cache.translation-ttl-days.
+
+ACCEPTANCE CRITERIA
+
+1. ./mvnw clean compile succeeds with zero style violations.
+2. With docker-compose Redis running, put(...) then find(...) for the same (text, src, tgt) returns the stored TranslationResponse; a different text returns Optional.empty().
+3. The cache key incorporates sourceText, source language and target language so FR→RW and RW→FR of the same text do not collide.
+4. Stored entries expire per tuganire.cache.translation-ttl-days.
+5. No file imports com.fasterxml.jackson.* (Jackson 3 only).
+6. The app boots even when Redis is unavailable in a test profile (no startup crash from this bean).
+
+NOTES
+
+Returned TranslationResponse from cache must have fromCache=true — either store it that way or rewrap via TranslationResponse.fromCache(...) on read; TranslationService relies on this flag for metrics. Keep audio out of Redis except the short-lived audio-URL pointers handled later in the conversation pipeline.
