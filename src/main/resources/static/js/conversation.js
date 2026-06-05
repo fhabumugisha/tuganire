@@ -827,7 +827,8 @@ function conversation() {
 
             // Action row (replay + feedback) — populated once audio/text arrive.
             const actionRow = document.createElement('div');
-            actionRow.className = 'flex items-center gap-2 pt-1 border-t border-base-300/50';
+            // flex-wrap so the controls never overflow the bubble on narrow phones.
+            actionRow.className = 'flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 border-t border-base-300/50';
 
             tgtBubble.appendChild(tgtLabel);
             tgtBubble.appendChild(tgtText);
@@ -898,37 +899,41 @@ function conversation() {
             });
             refs.actionRow.appendChild(replayBtn);
 
-            // Play-original button — plays the SOURCE-language audio (corrected source text).
-            const playSourceLabel = msgs.playSource || 'Écouter l\'original';
-            const sourceBtn = document.createElement('button');
-            sourceBtn.type = 'button';
-            sourceBtn.setAttribute('aria-label', playSourceLabel);
-            sourceBtn.className = 'btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-accent transition-colors duration-150';
-            sourceBtn.innerHTML =
+            // Listen-in-other-language button — translate the target text BACK to the source
+            // language and speak it (e.g. hear the French meaning of a Kinyarwanda bubble).
+            const toLangName = refs.sourceLang === 'fr'
+                ? (msgs.langNameFr || 'Français')
+                : (msgs.langNameRw || 'Ikinyarwanda');
+            const listenLabel = (msgs.listenIn || 'Écouter en {0}').replace('{0}', toLangName);
+            const backBtn = document.createElement('button');
+            backBtn.type = 'button';
+            backBtn.setAttribute('aria-label', listenLabel);
+            backBtn.className = 'btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-accent transition-colors duration-150';
+            backBtn.innerHTML =
                 `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
-                + `<path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z"/></svg>`
+                + `<path stroke-linecap="round" stroke-linejoin="round" d="m10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802"/></svg>`
                 + `<span class="text-xs"></span>`;
-            sourceBtn.lastElementChild.textContent = playSourceLabel;
+            backBtn.lastElementChild.textContent = listenLabel;
 
-            // Hidden <audio> for the source text, mirroring how _attachAudio builds the target audio.
-            const sourceAudio = document.createElement('audio');
-            sourceAudio.id = `audio-src-${refs.translationId}`;
-            sourceAudio.preload = 'none';
-            sourceAudio.className = 'sr-only';
-            sourceAudio.setAttribute('aria-label', playSourceLabel);
-            refs.targetBubble.insertBefore(sourceAudio, refs.actionRow);
+            // Hidden <audio> for the back-translation (translate target → source, then speak).
+            const backAudio = document.createElement('audio');
+            backAudio.id = `audio-back-${refs.translationId}`;
+            backAudio.preload = 'none';
+            backAudio.className = 'sr-only';
+            backAudio.setAttribute('aria-label', listenLabel);
+            refs.targetBubble.insertBefore(backAudio, refs.actionRow);
 
-            sourceBtn.addEventListener('click', () => {
-                // Read the (final) source text at click time so it always matches the rendered bubble.
-                const sourceText = (refs.sourceText.textContent || '').trim();
-                if (!sourceText) return;
-                sourceAudio.src = `/api/v1/audio/speak.mp3?lang=${encodeURIComponent(refs.sourceLang)}`
-                    + `&text=${encodeURIComponent(sourceText)}`;
+            backBtn.addEventListener('click', () => {
+                // Read the (final) target text at click time so it always matches the rendered bubble.
+                const targetText = (refs.targetText.textContent || '').trim();
+                if (!targetText) return;
+                backAudio.src = `/api/v1/audio/translate-speak.mp3?text=${encodeURIComponent(targetText)}`
+                    + `&from=${encodeURIComponent(refs.targetLang)}&to=${encodeURIComponent(refs.sourceLang)}`;
                 this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
-                sourceAudio.currentTime = 0;
-                sourceAudio.play().catch(() => { /* autoplay may be blocked */ });
+                backAudio.currentTime = 0;
+                backAudio.play().catch(() => { /* autoplay may be blocked */ });
             });
-            refs.actionRow.appendChild(sourceBtn);
+            refs.actionRow.appendChild(backBtn);
 
             // Copy button — copies the current TARGET text to the clipboard.
             const copyLabel = msgs.copy || 'Copier';

@@ -2950,6 +2950,12 @@
   .gap-4 {
     gap: calc(var(--spacing) * 4);
   }
+  .gap-x-2 {
+    column-gap: calc(var(--spacing) * 2);
+  }
+  .gap-y-1 {
+    row-gap: calc(var(--spacing) * 1);
+  }
   .self-center {
     align-self: center;
   }

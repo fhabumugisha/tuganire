@@ -1,8 +1,12 @@
 package com.tuganire.conversation;
 
 import com.tuganire.shared.exception.ResourceNotFoundException;
+import com.tuganire.translation.TranslationRequest;
+import com.tuganire.translation.TranslationResponse;
+import com.tuganire.translation.TranslationService;
 import com.tuganire.tts.TtsService;
 import java.util.Locale;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -29,6 +33,7 @@ class AudioController {
 
     private final AudioStore audioStore;
     private final TtsService ttsService;
+    private final TranslationService translationService;
 
     /**
      * Streams the MP3 audio bytes for the given clip id.
@@ -66,6 +71,41 @@ class AudioController {
             return ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/mpeg")).body(bytes);
         } catch (Exception ex) {
             log.warn("Lazy TTS synthesis failed (lang={}): {}", lang, ex.getMessage());
+            return ResponseEntity.noContent().build();
+        }
+    }
+
+    /**
+     * Back-translation audio: translates {@code text} from {@code from} to {@code to}, then speaks the result in
+     * {@code to}. Lets the user hear a bubble's text rendered in the other language (e.g. hear the French meaning of a
+     * Kinyarwanda translation) to verify it. Degrades to 204 (silent) on any failure so the bubble is unaffected.
+     *
+     * @param text
+     *            the text to translate then speak
+     * @param from
+     *            BCP-47 code the text is written in
+     * @param to
+     *            BCP-47 code to translate into and speak
+     * @return 200 with audio bytes, 400 if text is blank, or 204 on failure
+     */
+    @GetMapping(value = "/translate-speak.mp3", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<byte[]> translateAndSpeak(@RequestParam("text") String text,
+            @RequestParam("from") String from, @RequestParam("to") String to) {
+        if (text == null || text.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            Locale toLocale = Locale.forLanguageTag(to);
+            TranslationResponse response = translationService.translate(
+                    new TranslationRequest(text, Locale.forLanguageTag(from), toLocale, UUID.randomUUID().toString()));
+            String translated = response.translatedText();
+            if (translated == null || translated.isBlank()) {
+                return ResponseEntity.noContent().build();
+            }
+            byte[] bytes = ttsService.synthesize(translated, toLocale);
+            return ResponseEntity.ok().contentType(MediaType.parseMediaType("audio/mpeg")).body(bytes);
+        } catch (Exception ex) {
+            log.warn("Translate+speak failed ({}->{}): {}", from, to, ex.getMessage());
             return ResponseEntity.noContent().build();
         }
     }

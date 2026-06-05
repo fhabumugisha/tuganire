@@ -7,9 +7,17 @@
 </head>
 <body>
 
-<!-- i18n strings injected for Alpine/JS consumption via Thymeleaf inline expressions -->
-<script th:inline="javascript">
-    window.tuganireMessages = {
+<div layout:fragment="content"
+     x-data="conversation()"
+     x-init="init()"
+     class="relative flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <!-- i18n strings for Alpine/JS. MUST stay INSIDE layout:fragment="content": the Thymeleaf
+         Layout Dialect drops anything outside the fragment, so a block placed before the fragment
+         div is silently discarded (then window.tuganireMessages is undefined and the JS falls back
+         to French only). -->
+    <script th:inline="javascript">
+        window.tuganireMessages = {
         sttFailed:      /*[[#{error.sttFailed}]]*/      'Échec de la reconnaissance vocale.',
         errorGeneric:   /*[[#{error.generic}]]*/        'Une erreur s\'est produite.',
         notAllowed:     /*[[#{error.micNotAllowed}]]*/  'Accès au microphone refusé.',
@@ -21,7 +29,7 @@
         translateFailed:/*[[#{error.translateFailed}]]*/ 'Échec de la traduction. Veuillez réessayer.',
         // Bubble labels + actions rebuilt client-side for the streaming path
         replay:         /*[[#{action.replay}]]*/   'Rejouer',
-        playSource:     /*[[#{action.playSource}]]*/ 'Écouter l\'original',
+        listenIn:       /*[[#{action.listenIn('{0}')}]]*/ 'Écouter en {0}',
         copy:           /*[[#{action.copy}]]*/     'Copier',
         copied:         /*[[#{action.copied}]]*/   'Copié',
         thumbsUp:       /*[[#{action.thumbsUp}]]*/  'Bon',
@@ -32,13 +40,8 @@
         // {0} placeholder for the bubble ARIA labels — JS substitutes the language name
         ariaBubbleSource: /*[[#{aria.bubble.source('{0}')}]]*/ 'Texte source en {0}',
         ariaBubbleTarget: /*[[#{aria.bubble.target('{0}')}]]*/ 'Traduction en {0}'
-    };
-</script>
-
-<div layout:fragment="content"
-     x-data="conversation()"
-     x-init="init()"
-     class="relative flex flex-col min-h-[calc(100dvh-3.5rem)]">
+        };
+    </script>
 
     <!--
         HTTPS / browser compatibility notice.
