@@ -2079,14 +2079,14 @@
   .end {
     inset-inline-end: var(--spacing);
   }
+  .-top-\[3px\] {
+    top: calc(3px * -1);
+  }
   .top-0 {
     top: calc(var(--spacing) * 0);
   }
   .top-4 {
     top: calc(var(--spacing) * 4);
-  }
-  .top-14 {
-    top: calc(var(--spacing) * 14);
   }
   .top-16 {
     top: calc(var(--spacing) * 16);

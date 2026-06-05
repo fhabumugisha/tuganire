@@ -38,20 +38,6 @@
      class="relative flex flex-col min-h-[calc(100dvh-3.5rem)]">
 
     <!--
-        Translation progress bar.
-        Slim indeterminate bar pinned just under the sticky header, shown from the moment a
-        translation starts (STT upload or SSE stream open) until the stream finishes or errors.
-        Driven by Alpine `processing`. Animation is disabled under prefers-reduced-motion (CSS),
-        leaving a static visible fill so the state is still perceivable. Spans both modes.
-    -->
-    <div x-show="processing"
-         x-cloak
-         class="sticky top-14 z-20 translate-progress"
-         role="progressbar"
-         th:aria-label="#{progress.translating}"
-         th:attr="aria-valuetext=#{progress.translating}"></div>
-
-    <!--
         HTTPS / browser compatibility notice.
         Shown in non-HTTPS environments or unsupported browsers via Alpine.
     -->
@@ -161,6 +147,18 @@
         <!-- pb-[env(safe-area-inset-bottom)] keeps the buttons clear of the iOS home indicator -->
         <div class="fixed bottom-0 left-0 right-0 z-20 bg-base-100 border-t border-base-300
                     panel-shadow-top pb-[env(safe-area-inset-bottom)]">
+
+            <!-- Translation progress bar: pinned to the TOP EDGE of the action bar (above the
+                 buttons) so it never covers the conversation text. Shown while `processing`.
+                 Wrapper handles positioning; inner .translate-progress keeps its own animation. -->
+            <div x-show="processing"
+                 x-cloak
+                 class="absolute left-0 right-0 -top-[3px]"
+                 role="progressbar"
+                 th:aria-label="#{progress.translating}"
+                 th:attr="aria-valuetext=#{progress.translating}">
+                <div class="translate-progress"></div>
+            </div>
 
             <!-- Listening indicator -->
             <div class="relative flex justify-center pt-3 pb-1"
