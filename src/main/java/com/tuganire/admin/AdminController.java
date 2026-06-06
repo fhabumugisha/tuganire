@@ -4,6 +4,8 @@ import com.tuganire.golden.GoldenDictionaryService;
 import com.tuganire.golden.GoldenEntryRequest;
 import com.tuganire.stt.RwComparisonService;
 import com.tuganire.stt.RwModelStat;
+import com.tuganire.tts.TtsVoiceComparisonService;
+import com.tuganire.tts.TtsVoiceStat;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +22,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
  * Thymeleaf controller for the {@code /admin} back-office dashboard.
  *
  * <p>
- * The dashboard has four sections: read-only feedback metrics, golden-dictionary CRUD, LLM-usage analytics, and the
- * Kinyarwanda A/B model-preference stats. {@code GET /admin} renders the full page; the {@code /admin/golden/**}
- * endpoints are HTMX partials that re-render the golden-entries table fragment after a create / delete operation. There
- * is no authentication in the MVP, so these routes are open like the rest of the app.
+ * The dashboard has read-only feedback metrics, golden-dictionary CRUD, LLM-usage analytics, the Kinyarwanda A/B
+ * model-preference stats, and the Kinyarwanda A/B voice-preference stats. {@code GET /admin} renders the full page; the
+ * {@code /admin/golden/**} endpoints are HTMX partials that re-render the golden-entries table fragment after a create
+ * / delete operation. There is no authentication in the MVP, so these routes are open like the rest of the app.
  */
 @Controller
 @RequestMapping("/admin")
@@ -39,13 +41,16 @@ public class AdminController {
     private static final String ATTR_GOLDEN_ENTRIES = "goldenEntries";
     private static final String ATTR_COMPARISON_STATS = "comparisonStats";
     private static final String ATTR_COMPARISON_TOTAL = "comparisonTotal";
+    private static final String ATTR_VOICE_STATS = "voiceStats";
+    private static final String ATTR_VOICE_TOTAL = "voiceTotal";
 
     private final AdminStatsService adminStatsService;
     private final GoldenDictionaryService goldenService;
     private final RwComparisonService comparisonService;
+    private final TtsVoiceComparisonService voiceComparisonService;
 
     /**
-     * Renders the full admin dashboard (all four sections).
+     * Renders the full admin dashboard (all sections).
      *
      * @param model
      *            the Spring MVC model
@@ -60,6 +65,10 @@ public class AdminController {
         List<RwModelStat> comparisonStats = comparisonService.stats();
         model.addAttribute(ATTR_COMPARISON_STATS, comparisonStats);
         model.addAttribute(ATTR_COMPARISON_TOTAL, comparisonStats.stream().mapToLong(RwModelStat::votes).sum());
+
+        List<TtsVoiceStat> voiceStats = voiceComparisonService.stats();
+        model.addAttribute(ATTR_VOICE_STATS, voiceStats);
+        model.addAttribute(ATTR_VOICE_TOTAL, voiceStats.stream().mapToLong(TtsVoiceStat::votes).sum());
         return VIEW_DASHBOARD;
     }
 

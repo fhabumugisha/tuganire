@@ -48,8 +48,10 @@ public interface MmsTtsClient {
      *            text to synthesise
      * @param lang
      *            BCP-47 language code (e.g. {@code "rw"}, {@code "fr"})
+     * @param pauses
+     *            when {@code true}, the server inserts natural pauses at punctuation for clearer articulation
      */
-    record MmsTtsRequest(String text, String lang) {
+    record MmsTtsRequest(String text, String lang, boolean pauses) {
     }
 
     /**

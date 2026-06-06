@@ -2457,6 +2457,9 @@
   .mt-2 {
     margin-top: calc(var(--spacing) * 2);
   }
+  .mt-3 {
+    margin-top: calc(var(--spacing) * 3);
+  }
   .mt-4 {
     margin-top: calc(var(--spacing) * 4);
   }
@@ -3506,6 +3509,26 @@
   .ease-out {
     --tw-ease: var(--ease-out);
     transition-timing-function: var(--ease-out);
+  }
+  .btn-outline {
+    @layer daisyui.l1 {
+      &:not( .btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn), :disabled, [disabled], .btn-disabled ) {
+        --btn-shadow: "";
+        --btn-bg: #0000;
+        --btn-fg: var(--btn-color);
+        --btn-border: var(--btn-color);
+        --btn-noise: none;
+      }
+      @media (hover: none) {
+        &:not(.btn-active, :active, :focus-visible, input:checked:not(.filter .btn)):hover {
+          --btn-shadow: "";
+          --btn-bg: #0000;
+          --btn-fg: var(--btn-color);
+          --btn-border: var(--btn-color);
+          --btn-noise: none;
+        }
+      }
+    }
   }
   .btn-sm {
     @layer daisyui.l1.l2 {

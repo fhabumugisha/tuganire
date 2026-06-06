@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import scipy.io.wavfile
 import io
+import re
 import time
 import subprocess
 import logging
@@ -96,6 +97,46 @@ def _select_adapter(lang: str) -> None:
 class TtsRequest(BaseModel):
     text: str
     lang: str = "rw"
+    pauses: bool = False
+
+
+# Seconds of silence inserted AFTER each punctuation mark when `pauses=True`. Sentence-final marks
+# get a longer breath than intra-sentence ones, which is what the native MMS voice lacks (it runs
+# words together with no articulation). Tuned by ear on Kinyarwanda phrases.
+_PAUSE_AFTER = {".": 0.35, "!": 0.35, "?": 0.35, ";": 0.25, ":": 0.25, ",": 0.18}
+
+
+def _synthesize_waveform(bundle: dict, text: str) -> np.ndarray:
+    """Run the VITS model on one text chunk and return its float32 mono waveform."""
+    inputs = bundle["tokenizer"](text, return_tensors="pt").to(device)
+    with torch.no_grad():
+        output = bundle["model"](**inputs).waveform
+    return output.squeeze().cpu().numpy()
+
+
+def _synthesize_with_pauses(bundle: dict, text: str, rate: int) -> np.ndarray:
+    """Synthesise `text` segment by segment, concatenating with silence at punctuation.
+
+    Splitting on punctuation lets the model reset its prosody per clause (clearer articulation)
+    and lets us insert an explicit breath the native model never produces on its own.
+    """
+    # Split into tokens, keeping the punctuation marks as their own entries.
+    tokens = re.split(r"([.!?;:,])", text)
+    pieces: list[np.ndarray] = []
+    i = 0
+    while i < len(tokens):
+        segment = tokens[i].strip()
+        punct = tokens[i + 1] if i + 1 < len(tokens) else ""
+        i += 2
+        if segment:
+            pieces.append(_synthesize_waveform(bundle, segment + punct))
+        pause = _PAUSE_AFTER.get(punct, 0.0)
+        if pause > 0.0:
+            pieces.append(np.zeros(int(rate * pause), dtype=np.float32))
+
+    if not pieces:
+        return _synthesize_waveform(bundle, text)
+    return np.concatenate(pieces).astype(np.float32)
 
 
 class SttResponse(BaseModel):
@@ -120,14 +161,13 @@ def synthesize(req: TtsRequest) -> Response:
     start = time.time()
     bundle = MODELS[req.lang]
 
-    inputs = bundle["tokenizer"](req.text, return_tensors="pt").to(device)
-
-    with torch.no_grad():
-        output = bundle["model"](**inputs).waveform
-
-    audio = output.squeeze().cpu().numpy()
     # sample rate is read from model config, not hardcoded
     rate: int = bundle["model"].config.sampling_rate
+
+    if req.pauses:
+        audio = _synthesize_with_pauses(bundle, req.text, rate)
+    else:
+        audio = _synthesize_waveform(bundle, req.text)
 
     buf = io.BytesIO()
     scipy.io.wavfile.write(buf, rate=rate, data=audio)

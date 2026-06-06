@@ -36,6 +36,6 @@ class MmsTtsProvider implements TtsProvider {
     @Override
     public byte[] synthesize(String text, String languageCode) {
         log.debug("MMS TTS synthesize: lang={}, text length={}", languageCode, text.length());
-        return mmsTtsClient.synthesize(new MmsTtsRequest(text, languageCode));
+        return mmsTtsClient.synthesize(new MmsTtsRequest(text, languageCode, false));
     }
 }

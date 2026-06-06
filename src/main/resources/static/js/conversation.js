@@ -966,6 +966,12 @@ function conversation() {
             });
             refs.actionRow.appendChild(copyBtn);
 
+            // A/B voice comparison button — only for Kinyarwanda audio (FR→RW bubbles), where the
+            // native MMS voice and the steered OpenAI voice differ enough to be worth a blind vote.
+            if (refs.targetLang === 'rw') {
+                this._buildVoiceCompare(refs);
+            }
+
             // Feedback (👍 / 👎) — posts form-encoded to /feedback with CSRF + sessionId,
             // mirroring fragments/feedback.html. On success the group is replaced by a thanks note.
             const feedbackGroup = document.createElement('div');
@@ -1024,6 +1030,140 @@ function conversation() {
                     group.replaceChildren(thanks);
                 }
             }).catch(() => { /* feedback is best-effort */ });
+        },
+
+        // ── A/B voice comparison (TTS) ──────────────────────────────────────────
+
+        /**
+         * Append a "compare voices" button to the bubble action row. On click it fetches two
+         * synthesised Kinyarwanda voices (MMS+pauses vs OpenAI steered) for the bubble's text and
+         * shows a blind A/B panel; clicking again toggles the panel off.
+         *
+         * @param {object} refs - the bubble refs from {@link _buildStreamingBubble}
+         */
+        _buildVoiceCompare(refs) {
+            const msgs = window.tuganireMessages || {};
+            const label = msgs.compareVoices || 'Comparer les voix';
+
+            const compareBtn = document.createElement('button');
+            compareBtn.type = 'button';
+            compareBtn.setAttribute('aria-label', label);
+            compareBtn.className = 'btn btn-ghost btn-xs gap-1 text-base-content/60 hover:text-accent transition-colors duration-150';
+            compareBtn.innerHTML =
+                `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                + `<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/></svg>`
+                + `<span class="text-xs hidden sm:inline"></span>`;
+            compareBtn.lastElementChild.textContent = label;
+
+            let panel = null;
+            compareBtn.addEventListener('click', async () => {
+                if (panel) { panel.remove(); panel = null; return; }
+                const targetText = (refs.targetText.textContent || '').trim();
+                if (!targetText) return;
+
+                compareBtn.disabled = true;
+                try {
+                    const resp = await fetch(`/api/v1/tts/compare?text=${encodeURIComponent(targetText)}&lang=rw`);
+                    if (!resp.ok) throw new Error('voice-compare-failed');
+                    const data = await resp.json();
+                    panel = this._buildVoicePanel(data.candidates || []);
+                    refs.targetBubble.appendChild(panel);
+                } catch (_) {
+                    this.errorMessage = msgs.voiceCompareFailed || 'Comparaison des voix indisponible.';
+                } finally {
+                    compareBtn.disabled = false;
+                }
+            });
+            refs.actionRow.appendChild(compareBtn);
+        },
+
+        /**
+         * Build the blind A/B voice panel: one play button per (shuffled) candidate plus a
+         * "prefer this voice" button. The variant ids stay hidden; the user sees only "Voix 1/2".
+         *
+         * @param {Array<{variantId: string, audioUrl: string}>} candidates - the synthesised voices
+         * @returns {HTMLElement} the panel element
+         */
+        _buildVoicePanel(candidates) {
+            const msgs = window.tuganireMessages || {};
+            const panel = document.createElement('div');
+            panel.className = 'mt-3 pt-3 border-t border-base-300/50 w-full';
+
+            const title = document.createElement('p');
+            title.className = 'text-xs font-medium text-base-content/70 mb-2';
+            title.textContent = msgs.voiceCompareTitle || 'Quelle voix préférez-vous ?';
+            panel.appendChild(title);
+
+            const optionTpl = msgs.voiceOption || 'Voix {0}';
+
+            candidates.forEach((cand, idx) => {
+                const optionLabel = optionTpl.replace('{0}', String(idx + 1));
+
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-2 mb-2';
+
+                const audio = document.createElement('audio');
+                audio.src = cand.audioUrl;
+                audio.preload = 'none';
+                audio.className = 'sr-only';
+                row.appendChild(audio);
+
+                const playBtn = document.createElement('button');
+                playBtn.type = 'button';
+                playBtn.className = 'btn btn-sm btn-outline gap-1 flex-1 justify-start';
+                playBtn.innerHTML =
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                    + `<path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"/></svg>`
+                    + `<span></span>`;
+                playBtn.lastElementChild.textContent = `${optionLabel} · ${msgs.voicePlay || 'Écouter'}`;
+                playBtn.addEventListener('click', () => {
+                    this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
+                    audio.currentTime = 0;
+                    audio.play().catch(() => { /* autoplay may be blocked */ });
+                });
+                row.appendChild(playBtn);
+
+                const chooseBtn = document.createElement('button');
+                chooseBtn.type = 'button';
+                chooseBtn.className = 'btn btn-sm btn-accent text-white shrink-0';
+                chooseBtn.setAttribute('aria-label', `${msgs.voiceChoose || 'Préférer cette voix'} — ${optionLabel}`);
+                chooseBtn.textContent = msgs.voiceChoose || 'Préférer cette voix';
+                chooseBtn.addEventListener('click', () => {
+                    const rejected = candidates.find(c => c.variantId !== cand.variantId);
+                    this._recordVoiceVote(cand.variantId, rejected ? rejected.variantId : null);
+                    const thanks = document.createElement('p');
+                    thanks.className = 'text-xs text-success font-medium py-1';
+                    thanks.textContent = msgs.voiceThanks || 'Merci !';
+                    panel.replaceChildren(thanks);
+                });
+                row.appendChild(chooseBtn);
+
+                panel.appendChild(row);
+            });
+
+            return panel;
+        },
+
+        /**
+         * Record the preferred voice variant (best-effort), mirroring {@link _chooseCandidate}.
+         *
+         * @param {string} chosenVariant   - the variant id the user preferred
+         * @param {?string} rejectedVariant - the other variant id, or null
+         */
+        _recordVoiceVote(chosenVariant, rejectedVariant) {
+            try {
+                const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
+                const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
+                fetch('/api/v1/tts/compare-vote', {
+                    method: 'POST',
+                    headers: { [csrfHeader]: csrfToken, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chosenVariant,
+                        rejectedVariant: rejectedVariant || null,
+                        sessionId: this.sessionId || null,
+                    }),
+                }).catch(() => { /* recording is best-effort */ });
+            } catch (_) { /* best-effort */ }
         },
 
         // ── DOM helpers ────────────────────────────────────────────────────

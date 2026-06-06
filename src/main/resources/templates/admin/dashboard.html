@@ -36,6 +36,10 @@
                     :class="tab === 'comparison' ? 'tab-active' : ''"
                     @click="tab = 'comparison'"
                     th:text="#{admin.tab.comparison}">Comparaison</button>
+            <button type="button" role="tab" class="tab"
+                    :class="tab === 'voice' ? 'tab-active' : ''"
+                    @click="tab = 'voice'"
+                    th:text="#{admin.tab.voice}">Voix</button>
         </div>
 
         <!-- ── Section 4: Kinyarwanda A/B comparison (read-only) ────────────── -->
@@ -65,6 +69,41 @@
                                     <td class="text-right font-medium" th:text="${stat.votes()}">0</td>
                                     <td class="text-right"
                                         th:text="${stat.votes() * 100 / comparisonTotal} + ' %'">0 %</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── Section 5: Kinyarwanda A/B voice comparison (read-only) ───────── -->
+        <section x-show="tab === 'voice'" x-cloak>
+            <div class="card bg-base-100 border border-base-300 shadow-sm">
+                <div class="card-body p-4">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-1"
+                        th:text="#{admin.voice.title}">Voix kinyarwanda (A/B)</h2>
+                    <p class="text-xs text-base-content/50 mb-3"
+                       th:text="#{admin.voice.subtitle(${voiceTotal})}">Choix enregistrés</p>
+
+                    <div th:if="${voiceTotal == 0}" class="text-sm text-base-content/50 py-4"
+                         th:text="#{admin.voice.empty}">Aucun choix de voix enregistré pour l'instant.</div>
+
+                    <div th:if="${voiceTotal > 0}" class="overflow-x-auto">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th th:text="#{admin.voice.col.voice}">Voix</th>
+                                    <th class="text-right" th:text="#{admin.voice.col.votes}">Choix</th>
+                                    <th class="text-right" th:text="#{admin.voice.col.share}">Part</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="stat : ${voiceStats}">
+                                    <td th:text="${stat.label()}">Voix</td>
+                                    <td class="text-right font-medium" th:text="${stat.votes()}">0</td>
+                                    <td class="text-right"
+                                        th:text="${stat.votes() * 100 / voiceTotal} + ' %'">0 %</td>
                                 </tr>
                             </tbody>
                         </table>
