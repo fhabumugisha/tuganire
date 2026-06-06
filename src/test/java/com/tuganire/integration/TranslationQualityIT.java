@@ -44,7 +44,10 @@ class TranslationQualityIT extends AbstractIntegrationTest {
     @MockitoBean
     private LlmProviderFactory llmProviderFactory;
 
-    @MockitoBean
+    // Two LlmProvider beans exist (openAiLlmProvider, claudeLlmProvider); target one by name so the
+    // override is unambiguous. The factory is mocked to hand this stub back, so which one is replaced
+    // is irrelevant to the test.
+    @MockitoBean(name = "openAiLlmProvider")
     private LlmProvider stubbedLlmProvider;
 
     @BeforeEach
