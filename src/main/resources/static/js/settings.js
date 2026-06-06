@@ -46,13 +46,6 @@ function settings() {
         frenchStt: 'webspeech',
 
         /**
-         * Kinyarwanda A/B comparison mode (per-device). When on, each Kinyarwanda utterance is
-         * cleaned by two models and the user picks the better transcription. Read by conversation.js
-         * from the same localStorage key.
-         */
-        compareRw: false,
-
-        /**
          * GPT-4o translation temperature. Server-global (PUT /api/v1/settings/temperature),
          * loaded from the server in init() so the slider reflects the live value.
          */
@@ -94,7 +87,6 @@ function settings() {
             if (savedStt === 'webspeech' || savedStt === 'openai') {
                 this.frenchStt = savedStt;
             }
-            this.compareRw = localStorage.getItem('tuganire.compareRw') === '1';
             this.loadProviders();
             this.loadTemperature();
             this.loadTranslationModel();
@@ -161,20 +153,6 @@ function settings() {
             } catch (_) {
                 this._error('frenchStt', 'settings.saveError.frenchStt',
                     'Failed to save the French transcription engine.');
-            }
-        },
-
-        /**
-         * Persists the Kinyarwanda A/B comparison-mode toggle to localStorage (per-device).
-         * No server round-trip: conversation.js reads the same key on load.
-         */
-        saveCompareRw() {
-            try {
-                localStorage.setItem('tuganire.compareRw', this.compareRw ? '1' : '0');
-                this._success('compareRw');
-            } catch (_) {
-                this._error('compareRw', 'settings.saveError.compareRw',
-                    'Failed to save the comparison mode.');
             }
         },
 

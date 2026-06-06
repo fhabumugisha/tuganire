@@ -3,17 +3,13 @@ package com.tuganire.stt;
 import com.tuganire.shared.exception.BusinessException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,9 +20,8 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <ul>
  * <li>{@code /transcribe-fr} — French: Whisper transcription → {@link FrenchCorrectionService} cleanup.
- * <li>{@code /transcribe-rw} — Kinyarwanda: MMS-ASR transcription.
- * <li>{@code /transcribe-rw/compare} + {@code /compare-choice} + {@code /compare-stats} — Kinyarwanda A/B mode: two
- * models clean the transcript, the user picks the better one, and the choice is recorded for per-model stats.
+ * <li>{@code /transcribe-rw} — Kinyarwanda: MMS-ASR transcription → {@link KinyarwandaCorrectionService} cleanup
+ * (GPT-5.5): restores punctuation, capitalisation and obvious agreement.
  * </ul>
  *
  * <p>
@@ -36,7 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1/stt")
 @RequiredArgsConstructor
-@Tag(name = "STT", description = "Server-side speech-to-text (French Whisper, Kinyarwanda MMS-ASR, A/B comparison)")
+@Tag(name = "STT", description = "Server-side speech-to-text (French Whisper, Kinyarwanda MMS-ASR + GPT-5.5 cleanup)")
 public class SttController {
 
     /** BCP-47 tag for French — uses Whisper + LLM correction. */
@@ -53,9 +48,12 @@ public class SttController {
     private static final Set<String> ALLOWED_AUDIO_CONTENT_TYPES = Set.of("audio/webm", "audio/ogg", "audio/mpeg",
             "audio/wav", "audio/mp4", "audio/x-m4a");
 
+    /** LLM model used to clean the raw Kinyarwanda MMS-ASR transcript (punctuation, capitalisation, agreement). */
+    private static final String RW_CLEANUP_MODEL = "gpt-5.5";
+
     private final SttService sttService;
     private final FrenchCorrectionService correctionService;
-    private final RwComparisonService comparisonService;
+    private final KinyarwandaCorrectionService kinyarwandaCorrectionService;
 
     /**
      * Transcribes an uploaded French audio clip with Whisper, then returns both the raw transcript and an LLM-corrected
@@ -77,67 +75,22 @@ public class SttController {
     }
 
     /**
-     * Transcribes an uploaded Kinyarwanda audio clip with the MMS-ASR provider.
-     *
-     * <p>
-     * Unlike French, there is no LLM correction step (MMS already models Kinyarwanda), so {@code corrected} mirrors
-     * {@code raw}.
+     * Transcribes an uploaded Kinyarwanda audio clip with the MMS-ASR provider, then cleans the raw transcript with
+     * GPT-5.5 (punctuation, capitalisation, obvious agreement) while preserving the speaker's words.
      *
      * @param audio
      *            the recorded audio (WebM/Opus from {@code MediaRecorder}); non-empty
-     * @return 200 with {@link TranscriptionResponse}
+     * @return 200 with {@link TranscriptionResponse} (raw + GPT-5.5-cleaned)
      */
     @PostMapping(value = "/transcribe-rw", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Transcribe Kinyarwanda audio", description = "MMS-ASR transcription of Kinyarwanda")
+    @Operation(summary = "Transcribe Kinyarwanda audio", description = "MMS-ASR transcription + GPT-5.5 cleanup")
     public ResponseEntity<TranscriptionResponse> transcribeKinyarwanda(@RequestParam("audio") MultipartFile audio) {
         byte[] bytes = readAudio(audio, "transcribe-rw");
 
         String raw = sttService.transcribe(bytes, KINYARWANDA);
+        String corrected = kinyarwandaCorrectionService.correct(raw, RW_CLEANUP_MODEL);
 
-        return ResponseEntity.ok(new TranscriptionResponse(raw, raw));
-    }
-
-    /**
-     * Transcribes a Kinyarwanda audio clip, then cleans it with two models for A/B comparison so the user can pick the
-     * better candidate (comparison mode).
-     *
-     * @param audio
-     *            the recorded audio; non-empty
-     * @return 200 with the raw transcript and one cleaned candidate per compared model
-     */
-    @PostMapping(value = "/transcribe-rw/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Compare Kinyarwanda cleanups", description = "Transcribe Kinyarwanda, then clean with two models for A/B comparison")
-    public ResponseEntity<RwCompareResponse> compareKinyarwanda(@RequestParam("audio") MultipartFile audio) {
-        byte[] bytes = readAudio(audio, "transcribe-rw/compare");
-
-        String raw = sttService.transcribe(bytes, KINYARWANDA);
-
-        return ResponseEntity.ok(new RwCompareResponse(raw, comparisonService.compare(raw)));
-    }
-
-    /**
-     * Records which model produced the Kinyarwanda cleanup the user preferred.
-     *
-     * @param request
-     *            the choice payload; {@code chosenModel} is required
-     * @return 200 (no body)
-     */
-    @PostMapping("/compare-choice")
-    @Operation(summary = "Record A/B choice", description = "Record which model produced the preferred Kinyarwanda cleanup")
-    public ResponseEntity<Void> recordCompareChoice(@Valid @RequestBody RwCompareChoiceRequest request) {
-        comparisonService.recordChoice(request.chosenModel(), request.rejectedModel(), request.sessionId());
-        return ResponseEntity.ok().build();
-    }
-
-    /**
-     * Returns the per-model A/B preference totals.
-     *
-     * @return 200 with one entry per model that has received at least one vote
-     */
-    @GetMapping("/compare-stats")
-    @Operation(summary = "A/B model stats", description = "Per-model preference totals for Kinyarwanda cleanup")
-    public ResponseEntity<List<RwModelStat>> compareStats() {
-        return ResponseEntity.ok(comparisonService.stats());
+        return ResponseEntity.ok(new TranscriptionResponse(raw, corrected));
     }
 
     /**

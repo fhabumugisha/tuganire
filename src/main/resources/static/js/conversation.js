@@ -43,14 +43,6 @@ function conversation() {
          */
         frenchStt: 'webspeech',
 
-        /**
-         * Kinyarwanda A/B comparison mode (per-device, set in /settings). When on, each Kinyarwanda
-         * utterance is cleaned by two models and the user picks the better transcription.
-         */
-        compareRw: false,
-
-        /** Target list ID for the current split-screen recording side. */
-
         /** SpeechRecognition instance (created fresh per recording session). */
         _recognition: null,
 
@@ -89,9 +81,6 @@ function conversation() {
             if (savedStt === 'openai' || savedStt === 'webspeech') {
                 this.frenchStt = savedStt;
             }
-
-            // Restore the Kinyarwanda A/B comparison-mode toggle
-            this.compareRw = localStorage.getItem('tuganire.compareRw') === '1';
 
             // Listen for pause-recognition events dispatched by translation bubbles
             // before auto-playing audio (avoids the mic picking up the speaker output).
@@ -168,16 +157,11 @@ function conversation() {
             if (savedStt === 'openai' || savedStt === 'webspeech') {
                 this.frenchStt = savedStt;
             }
-            this.compareRw = localStorage.getItem('tuganire.compareRw') === '1';
 
-            // Kinyarwanda → always record + server-side MMS-ASR. The browser Web Speech API
-            // does not handle Kinyarwanda (it drops negations and mangles words). In comparison
-            // mode, two models clean the transcript and the user picks the better one.
+            // Kinyarwanda → always record + server-side MMS-ASR, then GPT-5.5 cleans the transcript.
+            // The browser Web Speech API does not handle Kinyarwanda (it drops negations and mangles words).
             if (lang === 'rw') {
-                const endpoint = this.compareRw
-                    ? '/api/v1/stt/transcribe-rw/compare'
-                    : '/api/v1/stt/transcribe-rw';
-                this._startServerRecording(lang, endpoint, this.compareRw);
+                this._startServerRecording(lang, '/api/v1/stt/transcribe-rw');
                 return;
             }
             // French + OpenAI engine → record audio and transcribe server-side (Whisper + correction).
@@ -340,10 +324,8 @@ function conversation() {
          *
          * @param {string} lang - 'fr' (Whisper) or 'rw' (MMS-ASR)
          * @param {string} endpoint - the transcription endpoint to upload to
-         * @param {boolean} [compare] - when true, render the A/B chooser instead of auto-submitting
          */
-        async _startServerRecording(lang, endpoint, compare) {
-            this._compareMode = !!compare;
+        async _startServerRecording(lang, endpoint) {
             if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
                 this.errorMessage = this._sttErrorMessage('audio-capture');
                 setTimeout(() => { this.errorMessage = null; }, 5000);
@@ -363,9 +345,7 @@ function conversation() {
                 recorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
                 };
-                recorder.onstop = () => this._compareMode
-                    ? this._uploadCompareAudio(endpoint)
-                    : this._uploadServerAudio(lang, endpoint);
+                recorder.onstop = () => this._uploadServerAudio(lang, endpoint);
 
                 this._mediaRecorder = recorder;
                 recorder.start();
@@ -458,144 +438,12 @@ function conversation() {
             }
         },
 
-        // ── Kinyarwanda A/B comparison ──────────────────────────────────────────
-
-        /**
-         * Uploads the recorded Kinyarwanda audio to the compare endpoint, then renders the two
-         * cleaned candidates for the user to choose from (comparison mode).
-         *
-         * @param {string} endpoint - the compare transcription endpoint
-         */
-        async _uploadCompareAudio(endpoint) {
-            this._releaseStream();
-            const chunks = this._audioChunks || [];
-            this._audioChunks = [];
-            this._mediaRecorder = null;
-            if (chunks.length === 0) return;
-
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            this.translating = true;
-            this.processing  = true;
-            try {
-                const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
-                const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-
-                const formData = new FormData();
-                formData.append('audio', blob, 'speech.webm');
-
-                const resp = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { [csrfHeader]: csrfToken },
-                    body: formData,
-                });
-                if (!resp.ok) throw new Error('compare-failed');
-
-                const data = await resp.json();
-                if (data.candidates && data.candidates.length) {
-                    this._renderComparison(data.candidates);
-                }
-            } catch (_) {
-                this.errorMessage = this._sttErrorMessage('network');
-                setTimeout(() => { this.errorMessage = null; }, 5000);
-            } finally {
-                this.translating = false;
-                // Translation runs only after the user picks a candidate, so stop the bar now.
-                this.processing = false;
-            }
-        },
-
-        /**
-         * Renders the A/B chooser: one card per candidate with its model label and cleaned text,
-         * plus a "choose" button. Built in plain DOM (transient UI); labels come from
-         * {@code window.tuganireMessages} so they stay internationalised.
-         *
-         * @param {Array<{modelId: string, label: string, text: string}>} candidates
-         */
-        _renderComparison(candidates) {
-            const list = document.getElementById('conversation-list');
-            if (!list) return;
-            const msgs = window.tuganireMessages || {};
-
-            const titleText = msgs.compareTitle || 'Quelle transcription est la meilleure ?';
-            const chooseText = msgs.compareChoose || 'Choisir';
-
-            const wrap = document.createElement('div');
-            wrap.className = 'mb-4 rounded-lg border border-base-300 bg-base-100 p-3 animate-slide-in-up';
-            wrap.setAttribute('role', 'group');
-            wrap.setAttribute('aria-label', titleText);
-
-            const title = document.createElement('p');
-            title.className = 'text-xs font-medium text-base-content/60 mb-2';
-            title.textContent = titleText;
-            wrap.appendChild(title);
-
-            candidates.forEach((cand, idx) => {
-                const card = document.createElement('div');
-                card.className = 'rounded-lg border border-base-300 p-3 mb-2';
-
-                const lbl = document.createElement('p');
-                lbl.className = 'text-xs font-medium text-accent/70 mb-1';
-                lbl.textContent = cand.label;
-
-                const txt = document.createElement('p');
-                txt.className = 'text-sm text-base-content/80 mb-2 leading-relaxed';
-                txt.textContent = cand.text;
-
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-primary btn-xs';
-                btn.textContent = chooseText;
-                btn.setAttribute('aria-label', `${chooseText} — ${cand.label}`);
-                btn.addEventListener('click', () => {
-                    const other = candidates[(idx + 1) % candidates.length];
-                    this._chooseCandidate(wrap, cand, other);
-                });
-
-                card.appendChild(lbl);
-                card.appendChild(txt);
-                card.appendChild(btn);
-                wrap.appendChild(card);
-            });
-
-            list.appendChild(wrap);
-            this.scrollToBottom();
-        },
-
-        /**
-         * Records the chosen model (best-effort) and submits the chosen text through the normal
-         * translation flow.
-         *
-         * @param {HTMLElement} wrap - the chooser element to remove
-         * @param {{modelId: string, text: string}} chosen - the picked candidate
-         * @param {{modelId: string}} rejected - the other candidate
-         */
-        _chooseCandidate(wrap, chosen, rejected) {
-            try {
-                const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
-                const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-                fetch('/api/v1/stt/compare-choice', {
-                    method: 'POST',
-                    headers: { [csrfHeader]: csrfToken, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chosenModel: chosen.modelId,
-                        rejectedModel: rejected ? rejected.modelId : null,
-                        sessionId: this.sessionId || null,
-                    }),
-                }).catch(() => { /* recording is best-effort */ });
-            } catch (_) { /* best-effort */ }
-
-            if (wrap && wrap.parentNode) {
-                wrap.parentNode.removeChild(wrap);
-            }
-            this._submitTranscript(chosen.text, 'rw');
-        },
-
         // ── transcript submission ───────────────────────────────────────────
 
         /**
-         * Route a finalised transcript into the translation flow.
-         *  - Two-button mode (the normal path): progressive SSE rendering via {@link _streamTranslate}.
-         *  - Split-screen mode: the legacy server-rendered HTMX bubble, swapped into the active half.
+         * Route a finalised transcript into the translation flow via the SSE streaming pipeline.
+         *  - Two-button mode: the bubble streams into the single conversation list.
+         *  - Split-screen mode: the bubble streams into the listener's (target-language) panel.
          */
         _submitTranscript(transcript, lang) {
             const sourceLang = lang;
@@ -1173,7 +1021,7 @@ function conversation() {
         },
 
         /**
-         * Record the preferred voice variant (best-effort), mirroring {@link _chooseCandidate}.
+         * Record the preferred voice variant (best-effort).
          *
          * @param {string} chosenVariant   - the variant id the user preferred
          * @param {?string} rejectedVariant - the other variant id, or null

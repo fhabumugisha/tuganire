@@ -11,8 +11,7 @@ package com.tuganire.stt;
  * with terminal punctuation.
  *
  * <p>
- * The {@code modelId} is explicit so the A/B comparison feature can clean the same raw transcript with two different
- * models (e.g. {@code gpt-5.5} vs {@code claude-sonnet-4-6}) and let the user pick the better result.
+ * The {@code modelId} is explicit so the cleanup model is chosen at the call site (currently {@code gpt-5.5}).
  */
 public interface KinyarwandaCorrectionService {
 
