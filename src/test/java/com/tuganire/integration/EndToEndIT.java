@@ -36,8 +36,9 @@ class EndToEndIT extends AbstractIntegrationTest {
     @Autowired
     private WebApplicationContext webApplicationContext;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    // Used only to serialize request bodies in this test; a standalone instance avoids depending on a
+    // context-provided ObjectMapper bean (request/response JSON still flows through the web context).
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private FeedbackRepo feedbackRepo;
