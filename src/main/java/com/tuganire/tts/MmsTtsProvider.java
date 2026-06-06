@@ -21,6 +21,12 @@ class MmsTtsProvider implements TtsProvider {
 
     private static final Set<String> SUPPORTED_LANGUAGES = Set.of("rw", "fr");
 
+    /**
+     * Always request punctuation-aware pauses. MMS is the Kinyarwanda voice and runs words together with no
+     * articulation; inserting silences at punctuation makes it clearer and easier to follow.
+     */
+    private static final boolean USE_PAUSES = true;
+
     private final MmsTtsClient mmsTtsClient;
 
     @Override
@@ -36,6 +42,6 @@ class MmsTtsProvider implements TtsProvider {
     @Override
     public byte[] synthesize(String text, String languageCode) {
         log.debug("MMS TTS synthesize: lang={}, text length={}", languageCode, text.length());
-        return mmsTtsClient.synthesize(new MmsTtsRequest(text, languageCode, false));
+        return mmsTtsClient.synthesize(new MmsTtsRequest(text, languageCode, USE_PAUSES));
     }
 }
