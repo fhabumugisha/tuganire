@@ -14,6 +14,10 @@
  *  - In split-screen mode, stream the bubble into the LISTENER's panel (the target-language
  *    half) so the rotated top panel faces the right reader — same pipeline as two-button mode.
  */
+// A 44-byte silent WAV. Played once within a user gesture (the mic press) to unlock programmatic
+// audio playback on strict browsers (iOS/Safari), so the translation auto-reads when the pipeline ends.
+const SILENT_AUDIO = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+
 function conversation() {
     return {
         // ── state ──────────────────────────────────────────────────────────
@@ -32,6 +36,14 @@ function conversation() {
 
         /** Active EventSource for the streaming translation (so we can close it on cleanup). */
         _eventSource: null,
+
+        /**
+         * Single reusable <audio> for TTS playback. Unlocked on the first mic press (a user gesture)
+         * so the translation can auto-read aloud when the pipeline finishes — including on iOS/Safari,
+         * which only allow programmatic play() on an element previously played within a gesture.
+         */
+        _ttsAudio: null,
+        _audioUnlocked: false,
 
         /** 'twoButtons' (default) | 'splitScreen' — persisted in localStorage. */
         mode: 'twoButtons',
@@ -142,6 +154,10 @@ function conversation() {
          * @param {string} lang - 'fr' | 'rw'
          */
         toggleRecognition(lang) {
+            // Unlock audio within this user gesture so the translation can auto-read aloud later
+            // (the pipeline finishes seconds after, outside any gesture — too late on iOS/Safari).
+            this._unlockAudio();
+
             // Pressing the active button again stops it. For the OpenAI French path this
             // finalises the recording and uploads it; for Web Speech it aborts.
             if (this.recording && this.activeLang === lang) {
@@ -485,6 +501,12 @@ function conversation() {
             if (!refs) return;
             const scroll = () => this.scrollToBottom(refs.listId);
 
+            // Show the transcript immediately (deterministic tidy from STT) so the user sees text right away,
+            // without waiting on the streamed LLM correction. The first `correction` token clears it before
+            // appending the refined version (and `correction-done` sets the final text).
+            refs.sourceText.textContent = text;
+            let correctionStarted = false;
+
             this.bubbleCount++;
             this.processing  = true;
             this.translating = true;
@@ -503,6 +525,11 @@ function conversation() {
             es.addEventListener('correction', (e) => {
                 const token = this._eventToken(e);
                 if (token) {
+                    // Drop the immediately-shown transcript on the first streamed token, then append the refined one.
+                    if (!correctionStarted) {
+                        refs.sourceText.textContent = '';
+                        correctionStarted = true;
+                    }
                     refs.sourceText.textContent += token;
                     scroll();
                 }
@@ -697,29 +724,65 @@ function conversation() {
         },
 
         /**
-         * Attach a hidden <audio> element to the target bubble, auto-play it (pausing recognition
-         * first, like the server-rendered bubble), and render the replay + feedback controls.
+         * Render the replay + feedback controls, then auto-read the translation aloud through the
+         * shared, gesture-unlocked player so playback starts as soon as the pipeline finishes.
          */
         _attachAudio(refs, audioUrl) {
-            const msgs = window.tuganireMessages || {};
+            refs.audioUrl = audioUrl;
+            this._buildBubbleControls(refs);
+            this._playTts(audioUrl);
+        },
 
-            const audio = document.createElement('audio');
-            audio.id = `audio-${refs.translationId}`;
-            audio.src = audioUrl;
-            audio.preload = 'none';
-            audio.className = 'sr-only';
-            audio.setAttribute('aria-label', msgs.replay || 'Rejouer');
-            refs.targetBubble.insertBefore(audio, refs.actionRow);
+        /** Lazily creates the single reusable hidden <audio> used for all TTS playback. */
+        _ensureSharedAudio() {
+            if (!this._ttsAudio) {
+                const audio = document.createElement('audio');
+                audio.id = 'tuganire-tts-player';
+                audio.preload = 'auto';
+                audio.className = 'sr-only';
+                document.body.appendChild(audio);
+                this._ttsAudio = audio;
+            }
+            return this._ttsAudio;
+        },
 
-            this._buildBubbleControls(refs, audio);
+        /**
+         * Play a short silent clip on the shared player within the current user gesture. This grants
+         * future programmatic play() calls (the auto-read) permission on iOS/Safari; a no-op elsewhere.
+         */
+        _unlockAudio() {
+            if (this._audioUnlocked) return;
+            const audio = this._ensureSharedAudio();
+            try {
+                audio.src = SILENT_AUDIO;
+                const p = audio.play();
+                if (p && p.then) {
+                    // Mark unlocked only once the gesture-play actually succeeds, so a press that the
+                    // browser rejects is retried on the next press rather than silently giving up.
+                    p.then(() => { this._audioUnlocked = true; audio.pause(); audio.currentTime = 0; })
+                        .catch(() => { /* retry on next press */ });
+                } else {
+                    this._audioUnlocked = true;
+                }
+            } catch (_) { /* ignored */ }
+        },
 
+        /**
+         * Read {@code url} aloud through the shared player, pausing recognition first so the mic does
+         * not capture the speaker output. Returns the play() promise (rejection swallowed).
+         */
+        _playTts(url) {
+            if (!url) return Promise.resolve();
+            const audio = this._ensureSharedAudio();
             // Pause recognition before playback so the mic doesn't capture the speaker output.
             this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
-            audio.play().catch(() => { /* autoplay may be blocked; replay button remains */ });
+            audio.src = url;
+            const p = audio.play();
+            return p && p.catch ? p.catch(() => { /* autoplay may be blocked; replay button remains */ }) : Promise.resolve();
         },
 
         /** Render the replay button + feedback (👍/👎) controls into the bubble action row. */
-        _buildBubbleControls(refs, audio) {
+        _buildBubbleControls(refs) {
             if (refs._controlsBuilt) return;
             refs._controlsBuilt = true;
             const msgs = window.tuganireMessages || {};
@@ -735,9 +798,7 @@ function conversation() {
                 + `<span class="text-xs hidden sm:inline"></span>`;
             replayBtn.lastElementChild.textContent = msgs.replay || 'Rejouer';
             replayBtn.addEventListener('click', () => {
-                this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
-                audio.currentTime = 0;
-                audio.play().catch(() => { /* ignored */ });
+                this._playTts(refs.audioUrl);
             });
             refs.actionRow.appendChild(replayBtn);
 

@@ -20,8 +20,9 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <ul>
  * <li>{@code /transcribe-fr} — French: Whisper transcription → {@link FrenchCorrectionService} cleanup.
- * <li>{@code /transcribe-rw} — Kinyarwanda: MMS-ASR transcription → {@link KinyarwandaCorrectionService} cleanup
- * (GPT-5.5): restores punctuation, capitalisation and obvious agreement.
+ * <li>{@code /transcribe-rw} — Kinyarwanda: MMS-ASR transcription → {@link KinyarwandaCorrectionService} deterministic
+ * tidy (capitalisation + terminal punctuation). The LLM correction is performed once, downstream, by the streaming
+ * translation pipeline — so no blocking LLM round-trip happens here.
  * </ul>
  *
  * <p>
@@ -31,7 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1/stt")
 @RequiredArgsConstructor
-@Tag(name = "STT", description = "Server-side speech-to-text (French Whisper, Kinyarwanda MMS-ASR + GPT-5.5 cleanup)")
+@Tag(name = "STT", description = "Server-side speech-to-text (French Whisper, Kinyarwanda MMS-ASR + deterministic tidy)")
 public class SttController {
 
     /** BCP-47 tag for French — uses Whisper + LLM correction. */
@@ -47,9 +48,6 @@ public class SttController {
      */
     private static final Set<String> ALLOWED_AUDIO_CONTENT_TYPES = Set.of("audio/webm", "audio/ogg", "audio/mpeg",
             "audio/wav", "audio/mp4", "audio/x-m4a");
-
-    /** LLM model used to clean the raw Kinyarwanda MMS-ASR transcript (punctuation, capitalisation, agreement). */
-    private static final String RW_CLEANUP_MODEL = "gpt-5.5";
 
     private final SttService sttService;
     private final FrenchCorrectionService correctionService;
@@ -75,20 +73,21 @@ public class SttController {
     }
 
     /**
-     * Transcribes an uploaded Kinyarwanda audio clip with the MMS-ASR provider, then cleans the raw transcript with
-     * GPT-5.5 (punctuation, capitalisation, obvious agreement) while preserving the speaker's words.
+     * Transcribes an uploaded Kinyarwanda audio clip with the MMS-ASR provider, then applies the instant deterministic
+     * tidy (capitalisation, {@code Imana}, terminal punctuation). The LLM correction is performed once downstream by
+     * the streaming translation pipeline, so this endpoint returns without any blocking LLM round-trip.
      *
      * @param audio
      *            the recorded audio (WebM/Opus from {@code MediaRecorder}); non-empty
-     * @return 200 with {@link TranscriptionResponse} (raw + GPT-5.5-cleaned)
+     * @return 200 with {@link TranscriptionResponse} (raw + deterministically tidied)
      */
     @PostMapping(value = "/transcribe-rw", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Transcribe Kinyarwanda audio", description = "MMS-ASR transcription + GPT-5.5 cleanup")
+    @Operation(summary = "Transcribe Kinyarwanda audio", description = "MMS-ASR transcription + deterministic tidy")
     public ResponseEntity<TranscriptionResponse> transcribeKinyarwanda(@RequestParam("audio") MultipartFile audio) {
         byte[] bytes = readAudio(audio, "transcribe-rw");
 
         String raw = sttService.transcribe(bytes, KINYARWANDA);
-        String corrected = kinyarwandaCorrectionService.correct(raw, RW_CLEANUP_MODEL);
+        String corrected = kinyarwandaCorrectionService.tidy(raw);
 
         return ResponseEntity.ok(new TranscriptionResponse(raw, corrected));
     }

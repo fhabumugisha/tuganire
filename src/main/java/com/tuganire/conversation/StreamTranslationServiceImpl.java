@@ -81,7 +81,7 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
             N'ajoute aucune information, ne réponds pas à la phrase, ne la traduis pas. \
             Renvoie UNIQUEMENT la phrase corrigée, sans guillemets ni commentaire.""";
 
-    /** Mirrors {@code KinyarwandaCorrectionServiceImpl#SYSTEM_PROMPT} so streaming uses the same instructions. */
+    /** Single source of the streamed Kinyarwanda correction instructions (the only LLM RW correction in the app). */
     private static final String RW_CORRECTION_PROMPT = """
             Tu reçois la transcription brute d'une phrase dite en KINYARWANDA, produite par un modèle de \
             reconnaissance vocale. Elle est en minuscules, sans ponctuation, et peut contenir de petites erreurs \
@@ -150,9 +150,8 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
 
     /**
      * Streams the cleaned SOURCE text token by token via {@code correction} events and returns the full cleaned text.
-     * Kinyarwanda output is additionally run through {@link com.tuganire.stt.KinyarwandaCorrectionService}'s
-     * deterministic {@code tidy} pass before being returned (the streamed tokens are the raw model output; the
-     * {@code correction-done} text is the tidied final).
+     * Kinyarwanda output is additionally run through the deterministic {@link #tidy(String)} pass before being returned
+     * (the streamed tokens are the raw model output; the {@code correction-done} text is the tidied final).
      */
     private String streamCorrection(SseEmitter emitter, String text, String lang) {
         boolean rw = LANG_RW.equalsIgnoreCase(lang);

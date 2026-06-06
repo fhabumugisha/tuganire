@@ -1,32 +1,27 @@
 package com.tuganire.stt;
 
 /**
- * Cleans up a raw Kinyarwanda transcript (from MMS-ASR) using a chosen LLM.
+ * Deterministically tidies a raw Kinyarwanda transcript (from MMS-ASR).
  *
  * <p>
- * MMS-ASR is a CTC model: its output is all lowercase, has no punctuation, and contains occasional agreement/spelling
- * slips. This service asks an LLM to restore punctuation, capitalisation and obvious agreement while preserving the
- * speaker's exact words and intent. A deterministic pass then guarantees the orthographic rules an LLM may miss —
- * notably that {@code Imana} (God) is always capitalised, that the sentence starts with a capital, and that it ends
- * with terminal punctuation.
+ * MMS-ASR is a CTC model: its output is all lowercase and has no punctuation. This service applies the instant,
+ * deterministic orthographic rules an LLM may miss — {@code Imana} (God) is always capitalised, the sentence starts
+ * with a capital, and it ends with terminal punctuation.
  *
  * <p>
- * The {@code modelId} is explicit so the cleanup model is chosen at the call site (currently {@code gpt-5.5}).
+ * The richer LLM-based correction (punctuation restoration, obvious agreement/spelling fixes) is performed once, by the
+ * streaming translation pipeline ({@code StreamTranslationServiceImpl}), where it is streamed to the UI as it is
+ * produced. Running an LLM correction here as well would be a redundant, blocking round-trip that delays the result.
  */
 public interface KinyarwandaCorrectionService {
 
     /**
-     * Rewrites {@code rawTranscript} into correctly punctuated and capitalised Kinyarwanda using {@code modelId}.
+     * Applies the deterministic Kinyarwanda tidy rules to {@code raw}: capitalise {@code Imana}, capitalise the first
+     * letter, and ensure terminal punctuation.
      *
-     * <p>
-     * Best-effort: returns a deterministically tidied version of the input on any LLM failure rather than throwing, so
-     * a correction problem never blocks the transcription flow.
-     *
-     * @param rawTranscript
+     * @param raw
      *            the raw Kinyarwanda transcript produced by MMS-ASR
-     * @param modelId
-     *            the LLM model id to clean with (e.g. {@code "gpt-5.5"}, {@code "claude-sonnet-4-6"})
-     * @return the corrected Kinyarwanda text
+     * @return the tidied Kinyarwanda text, or an empty string for blank input
      */
-    String correct(String rawTranscript, String modelId);
+    String tidy(String raw);
 }
