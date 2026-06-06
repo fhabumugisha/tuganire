@@ -46,7 +46,7 @@ class OpenAiSteeredSpeechClient {
     private final String apiKey;
     private final String instructions;
 
-    OpenAiSteeredSpeechClient(RestClient.Builder builder, @Value("${spring.ai.openai.api-key:}") String apiKey,
+    OpenAiSteeredSpeechClient(@Value("${spring.ai.openai.api-key:}") String apiKey,
             @Value("${spring.ai.openai.base-url:https://api.openai.com}") String baseUrl,
             @Value("${tuganire.tts.steer-instructions:" + DEFAULT_INSTRUCTIONS + "}") String instructions) {
         this.apiKey = apiKey;
@@ -54,7 +54,8 @@ class OpenAiSteeredSpeechClient {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(READ_TIMEOUT);
-        this.restClient = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
+        // Build the client from the static factory: this app does not expose a RestClient.Builder bean.
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
     }
 
     /**
