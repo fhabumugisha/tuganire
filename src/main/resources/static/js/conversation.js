@@ -5,12 +5,14 @@
  *  - Detect Web Speech API support (Chrome / Chromium only).
  *  - Obtain an anonymous sessionId from POST /api/v1/sessions.
  *  - Toggle speech recognition on button press (fr-FR or rw-RW).
- *  - On a final SpeechRecognition result, submit the transcript to POST /translate
- *    via the hidden HTMX form so Thymeleaf fragment swapping handles the DOM update.
+ *  - On a final SpeechRecognition result, stream the translation via the SSE endpoint
+ *    (/api/v1/stream/translate): corrected text → translation → audio, rendered into a
+ *    client-built bubble with replay / listen / copy / voice-compare / feedback controls.
  *  - Pause recognition during audio playback to avoid self-triggering.
- *  - Expose scrollToBottom() so HTMX's after-request hook can keep the list scrolled.
+ *  - Expose scrollToBottom(listId) to keep the active list scrolled.
  *  - Toggle between 'twoButtons' and 'splitScreen' modes (US-04) without page reload.
- *  - In split-screen mode, route HTMX submissions to the correct side transcript list.
+ *  - In split-screen mode, stream the bubble into the LISTENER's panel (the target-language
+ *    half) so the rotated top panel faces the right reader — same pipeline as two-button mode.
  */
 function conversation() {
     return {
@@ -48,7 +50,6 @@ function conversation() {
         compareRw: false,
 
         /** Target list ID for the current split-screen recording side. */
-        _splitTarget: null,
 
         /** SpeechRecognition instance (created fresh per recording session). */
         _recognition: null,
@@ -145,14 +146,13 @@ function conversation() {
         // ── recognition ────────────────────────────────────────────────────
 
         /**
-         * Toggle recognition for the given language code ('fr' or 'rw').
-         * In split-screen mode, pass the target transcript list ID so HTMX
-         * injects the response bubble into the correct half.
+         * Toggle recognition for the given language code ('fr' or 'rw'). The translation bubble's
+         * destination (the active conversation list, or the listener's panel in split-screen mode)
+         * is decided later in {@link _submitTranscript} from the target language.
          *
          * @param {string} lang - 'fr' | 'rw'
-         * @param {string|null} splitTargetId - DOM ID of the target transcript list (split mode only)
          */
-        toggleRecognition(lang, splitTargetId) {
+        toggleRecognition(lang) {
             // Pressing the active button again stops it. For the OpenAI French path this
             // finalises the recording and uploads it; for Web Speech it aborts.
             if (this.recording && this.activeLang === lang) {
@@ -162,7 +162,6 @@ function conversation() {
             if (this.recording) {
                 this._stopActive();
             }
-            this._splitTarget = splitTargetId || null;
 
             // Re-read the engine/mode choices each press so a setting saved since page load takes effect.
             const savedStt = localStorage.getItem('tuganire.frenchStt');
@@ -602,24 +601,15 @@ function conversation() {
             const sourceLang = lang;
             const targetLang = lang === 'fr' ? 'rw' : 'fr';
 
-            if (this.mode === 'splitScreen' && this._splitTarget) {
-                // Split-screen: route to the correct half transcript list (server-rendered bubble).
-                document.getElementById('split-text').value        = transcript;
-                document.getElementById('split-session').value     = this.sessionId || '';
-                document.getElementById('split-source-lang').value = sourceLang;
-                document.getElementById('split-target-lang').value = targetLang;
+            // In split-screen mode the translation streams into the LISTENER's panel — the half
+            // showing the TARGET language — so the rotated top panel faces the right reader. In
+            // two-button mode it streams into the single conversation list. Both use the same
+            // progressive SSE pipeline (corrected text → translation → audio + rich bubble controls).
+            const listId = this.mode === 'splitScreen'
+                ? (targetLang === 'rw' ? 'split-transcript-rw' : 'split-transcript-fr')
+                : 'conversation-list';
 
-                const form = document.getElementById('split-transcript-form');
-                if (form) {
-                    // Update HTMX target dynamically to the active panel
-                    form.setAttribute('hx-target', `#${this._splitTarget}`);
-                    htmx.process(form);
-                    htmx.trigger(form, 'submit');
-                }
-            } else {
-                // Two-button mode: progressive streaming via the SSE endpoint.
-                this._streamTranslate(transcript, sourceLang, targetLang);
-            }
+            this._streamTranslate(transcript, sourceLang, targetLang, listId);
         },
 
         // ── streaming translation (SSE) ─────────────────────────────────────────
@@ -634,21 +624,23 @@ function conversation() {
          * @param {string} sourceLang - 'fr' | 'rw'
          * @param {string} targetLang - 'rw' | 'fr'
          */
-        _streamTranslate(text, sourceLang, targetLang) {
+        _streamTranslate(text, sourceLang, targetLang, listId) {
             // Only one stream at a time — tear down any previous one.
             this._closeStream();
 
             const translationId = (crypto.randomUUID && crypto.randomUUID())
                 || `t-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-            // Build the (initially empty) bubble and insert it into the conversation list.
-            const refs = this._buildStreamingBubble(translationId, sourceLang, targetLang);
+            // Build the (initially empty) bubble and insert it into the target list (the conversation
+            // list in two-button mode, or the listener's panel in split-screen mode).
+            const refs = this._buildStreamingBubble(translationId, sourceLang, targetLang, listId);
             if (!refs) return;
+            const scroll = () => this.scrollToBottom(refs.listId);
 
             this.bubbleCount++;
             this.processing  = true;
             this.translating = true;
-            this.scrollToBottom();
+            scroll();
 
             const params = new URLSearchParams({
                 text,
@@ -664,7 +656,7 @@ function conversation() {
                 const token = this._eventToken(e);
                 if (token) {
                     refs.sourceText.textContent += token;
-                    this.scrollToBottom();
+                    scroll();
                 }
             });
 
@@ -673,7 +665,7 @@ function conversation() {
                 const data = this._parseEvent(e);
                 if (data && typeof data.text === 'string') {
                     refs.sourceText.textContent = data.text;
-                    this.scrollToBottom();
+                    scroll();
                 }
             });
 
@@ -761,8 +753,9 @@ function conversation() {
          * @returns {{root: HTMLElement, sourceText: HTMLElement, targetText: HTMLElement,
          *            targetBubble: HTMLElement, actionRow: HTMLElement, targetLang: string}|null}
          */
-        _buildStreamingBubble(translationId, sourceLang, targetLang) {
-            const list = document.getElementById('conversation-list');
+        _buildStreamingBubble(translationId, sourceLang, targetLang, listId) {
+            const resolvedListId = listId || 'conversation-list';
+            const list = document.getElementById(resolvedListId);
             if (!list) return null;
             const msgs = window.tuganireMessages || {};
 
@@ -850,6 +843,7 @@ function conversation() {
                 translationId,
                 sourceLang,
                 targetLang,
+                listId: resolvedListId,
                 _controlsBuilt: false,
             };
         },
@@ -1090,17 +1084,20 @@ function conversation() {
             panel.className = 'mt-3 pt-3 border-t border-base-300/50 w-full';
 
             const title = document.createElement('p');
-            title.className = 'text-xs font-medium text-base-content/70 mb-2';
+            title.className = 'text-xs font-semibold text-base-content/60 mb-2.5';
             title.textContent = msgs.voiceCompareTitle || 'Quelle voix préférez-vous ?';
             panel.appendChild(title);
 
             const optionTpl = msgs.voiceOption || 'Voix {0}';
+            // Track the currently-playing audio so a second tap (or playing the other voice) stops it.
+            let playing = null;
 
             candidates.forEach((cand, idx) => {
                 const optionLabel = optionTpl.replace('{0}', String(idx + 1));
 
                 const row = document.createElement('div');
-                row.className = 'flex items-center gap-2 mb-2';
+                row.className = 'flex items-center gap-3 px-2.5 py-2 mb-2 rounded-xl bg-base-200/60 '
+                    + 'border border-base-300/60';
 
                 const audio = document.createElement('audio');
                 audio.src = cand.audioUrl;
@@ -1108,33 +1105,64 @@ function conversation() {
                 audio.className = 'sr-only';
                 row.appendChild(audio);
 
+                // Circular play / pause button.
                 const playBtn = document.createElement('button');
                 playBtn.type = 'button';
-                playBtn.className = 'btn btn-sm btn-outline gap-1 flex-1 justify-start';
-                playBtn.innerHTML =
-                    `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
-                    + `<path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"/></svg>`
-                    + `<span></span>`;
-                playBtn.lastElementChild.textContent = `${optionLabel} · ${msgs.voicePlay || 'Écouter'}`;
+                playBtn.className = 'btn btn-circle btn-sm btn-ghost text-base-content/70 hover:text-accent shrink-0';
+                const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"/></svg>`;
+                const pauseIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.75 5.25a.75.75 0 01.75.75v12a.75.75 0 01-1.5 0V6a.75.75 0 01.75-.75zm9.75.75a.75.75 0 00-1.5 0v12a.75.75 0 001.5 0V6z"/></svg>`;
+                playBtn.innerHTML = playIcon;
+                playBtn.setAttribute('aria-label', `${msgs.voicePlay || 'Écouter'} — ${cand.label || optionLabel}`);
+                audio.addEventListener('ended', () => { playBtn.innerHTML = playIcon; });
                 playBtn.addEventListener('click', () => {
-                    this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
-                    audio.currentTime = 0;
-                    audio.play().catch(() => { /* autoplay may be blocked */ });
+                    if (playing && playing !== audio) { playing.pause(); }
+                    if (audio.paused) {
+                        this.$el.dispatchEvent(new CustomEvent('pause-recognition'));
+                        audio.currentTime = 0;
+                        audio.play().then(() => { playBtn.innerHTML = pauseIcon; playing = audio; })
+                            .catch(() => { /* autoplay may be blocked */ });
+                    } else {
+                        audio.pause();
+                        playBtn.innerHTML = playIcon;
+                    }
                 });
                 row.appendChild(playBtn);
 
+                // Voice identity: model name (primary) + the blind position number (secondary).
+                const labelWrap = document.createElement('div');
+                labelWrap.className = 'flex-1 min-w-0 leading-tight';
+                const name = document.createElement('p');
+                name.className = 'text-sm font-medium text-base-content truncate';
+                name.textContent = cand.label || optionLabel;
+                const sub = document.createElement('p');
+                sub.className = 'text-[11px] text-base-content/45';
+                sub.textContent = optionLabel;
+                labelWrap.appendChild(name);
+                labelWrap.appendChild(sub);
+                row.appendChild(labelWrap);
+
+                // Compact "choose" button with a check icon.
                 const chooseBtn = document.createElement('button');
                 chooseBtn.type = 'button';
-                chooseBtn.className = 'btn btn-sm btn-accent text-white shrink-0';
-                chooseBtn.setAttribute('aria-label', `${msgs.voiceChoose || 'Préférer cette voix'} — ${optionLabel}`);
-                chooseBtn.textContent = msgs.voiceChoose || 'Préférer cette voix';
+                chooseBtn.className = 'btn btn-sm btn-outline btn-accent gap-1 shrink-0';
+                chooseBtn.setAttribute('aria-label', `${msgs.voiceChoose || 'Choisir'} — ${cand.label || optionLabel}`);
+                chooseBtn.innerHTML =
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                    + `<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>`
+                    + `<span></span>`;
+                chooseBtn.lastElementChild.textContent = msgs.voiceChoose || 'Choisir';
                 chooseBtn.addEventListener('click', () => {
+                    if (playing) { playing.pause(); }
                     const rejected = candidates.find(c => c.variantId !== cand.variantId);
                     this._recordVoiceVote(cand.variantId, rejected ? rejected.variantId : null);
-                    const thanks = document.createElement('p');
-                    thanks.className = 'text-xs text-success font-medium py-1';
-                    thanks.textContent = msgs.voiceThanks || 'Merci !';
-                    panel.replaceChildren(thanks);
+                    const done = document.createElement('div');
+                    done.className = 'flex items-center gap-1.5 text-xs text-success font-medium py-1.5';
+                    done.innerHTML =
+                        `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">`
+                        + `<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`
+                        + `<span></span>`;
+                    done.lastElementChild.textContent = `${msgs.voiceThanks || 'Merci !'} (${cand.label || optionLabel})`;
+                    panel.replaceChildren(done);
                 });
                 row.appendChild(chooseBtn);
 
@@ -1168,21 +1196,16 @@ function conversation() {
 
         // ── DOM helpers ────────────────────────────────────────────────────
 
-        /** Scroll the two-button conversation list to the bottom after a new bubble. */
-        scrollToBottom() {
-            const list = document.getElementById('conversation-list');
+        /**
+         * Scroll a conversation list to the bottom after a new bubble.
+         *
+         * @param {string} [listId] - target list id; defaults to the two-button conversation list.
+         *                             In split-screen mode the streaming flow passes the active panel id.
+         */
+        scrollToBottom(listId) {
+            const list = document.getElementById(listId || 'conversation-list');
             if (list) {
                 list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
-            }
-        },
-
-        /** Scroll the active split-screen transcript panel to the bottom. */
-        scrollSplitToBottom() {
-            if (this._splitTarget) {
-                const list = document.getElementById(this._splitTarget);
-                if (list) {
-                    list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
-                }
             }
         },
 

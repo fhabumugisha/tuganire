@@ -382,7 +382,7 @@
                                focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                         :class="recording && activeLang === 'rw' ? 'ring-4 ring-accent/30 scale-[0.98]' : ''"
                         :disabled="recording && activeLang !== 'rw'"
-                        @click="toggleRecognition('rw', 'split-transcript-rw')"
+                        @click="toggleRecognition('rw')"
                         :aria-label="recording && activeLang === 'rw'
                                       ? /*[[#{action.stop}]]*/ 'Arrêter'
                                       : /*[[#{button.speakKinyarwanda}]]*/ 'Kuvuga ikinyarwanda'"
@@ -493,7 +493,7 @@
                                focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                         :class="recording && activeLang === 'fr' ? 'ring-4 ring-primary/30 scale-[0.98]' : ''"
                         :disabled="recording && activeLang !== 'fr'"
-                        @click="toggleRecognition('fr', 'split-transcript-fr')"
+                        @click="toggleRecognition('fr')"
                         :aria-label="recording && activeLang === 'fr'
                                       ? /*[[#{action.stop}]]*/ 'Arrêter'
                                       : /*[[#{button.speakFrench}]]*/ 'Parler français'"
@@ -524,19 +524,6 @@
         <input type="hidden" name="targetLang"    id="transcript-target-lang">
     </form>
 
-    <!-- Hidden form for split-screen HTMX submissions -->
-    <form id="split-transcript-form"
-          class="hidden"
-          th:hx-post="@{/translate}"
-          hx-swap="beforeend"
-          @htmx:before-request="translating = true"
-          @htmx:after-request="translating = false; $nextTick(() => scrollSplitToBottom())">
-        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-        <input type="hidden" name="sourceText"    id="split-text">
-        <input type="hidden" name="sessionId"     id="split-session">
-        <input type="hidden" name="sourceLang"    id="split-source-lang">
-        <input type="hidden" name="targetLang"    id="split-target-lang">
-    </form>
 
 </div>
 

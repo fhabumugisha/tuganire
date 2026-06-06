@@ -114,6 +114,24 @@ def _synthesize_waveform(bundle: dict, text: str) -> np.ndarray:
     return output.squeeze().cpu().numpy()
 
 
+def _encode_mp3(audio: np.ndarray, rate: int) -> bytes:
+    """Encode a float32 waveform to MP3 via ffmpeg.
+
+    MMS produces 32-bit IEEE-float WAV, which mobile browsers (iOS Safari, Android Chrome)
+    refuse to decode — so playback silently fails when the bytes are served as audio/mpeg.
+    Transcoding to real MP3 matches the audio/mpeg content-type and plays everywhere.
+    """
+    buf = io.BytesIO()
+    scipy.io.wavfile.write(buf, rate=rate, data=audio)
+    proc = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error",
+         "-f", "wav", "-i", "pipe:0",
+         "-codec:a", "libmp3lame", "-q:a", "4", "-f", "mp3", "pipe:1"],
+        input=buf.getvalue(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+    )
+    return proc.stdout
+
+
 def _synthesize_with_pauses(bundle: dict, text: str, rate: int) -> np.ndarray:
     """Synthesise `text` segment by segment, concatenating with silence at punctuation.
 
@@ -169,15 +187,14 @@ def synthesize(req: TtsRequest) -> Response:
     else:
         audio = _synthesize_waveform(bundle, req.text)
 
-    buf = io.BytesIO()
-    scipy.io.wavfile.write(buf, rate=rate, data=audio)
+    mp3_bytes = _encode_mp3(audio, rate)
 
     duration_ms = int((time.time() - start) * 1000)
-    logger.info(f"Generated {req.lang} TTS in {duration_ms}ms")
+    logger.info(f"Generated {req.lang} TTS ({len(mp3_bytes)} bytes MP3) in {duration_ms}ms")
 
     return Response(
-        content=buf.getvalue(),
-        media_type="audio/wav",
+        content=mp3_bytes,
+        media_type="audio/mpeg",
         headers={"X-Generation-Time-Ms": str(duration_ms)},
     )
 
