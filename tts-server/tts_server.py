@@ -1,3 +1,16 @@
+import os
+
+# ── CPU thread pinning (MUST run before torch/transformers import) ───────────
+# On a shared/virtualised CPU (Railway, k8s…) PyTorch otherwise spawns one thread per HOST core
+# (often 32) while the container is only granted a fraction of a vCPU. The oversubscribed threads
+# blow through the cgroup CFS quota each scheduling period and get throttled (frozen) for the rest
+# of it — inflating a ~2s Kinyarwanda transcription to ~80s. Pinning every BLAS/OpenMP/torch pool
+# to the real allocation removes the throttle-storm. Tune via TORCH_NUM_THREADS to match the plan's
+# vCPU (e.g. 2 on a small instance); the default is conservative.
+_THREADS = os.environ.get("TORCH_NUM_THREADS", "4")
+for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, _THREADS)
+
 from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel
 from transformers import VitsModel, AutoTokenizer, Wav2Vec2ForCTC, AutoProcessor
@@ -25,7 +38,9 @@ def get_device() -> torch.device:
 
 
 device = get_device()
-logger.info(f"Using device: {device}")
+# Pin the intra-op thread pool too (env vars above cover OpenMP/BLAS; this covers torch's own pool).
+torch.set_num_threads(int(_THREADS))
+logger.info(f"Using device: {device} (torch threads: {torch.get_num_threads()})")
 
 # ── TTS models (speech synthesis) ───────────────────────────────────────────
 MODELS: dict = {
