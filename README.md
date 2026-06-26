@@ -13,7 +13,7 @@ When a French-speaking traveller visits Rwanda, existing tools fall short:
 - GPT-4o and Claude produce structurally flawed translations across 5 documented grammatical error categories
 - No tool respects Rwandan cultural codes (politeness registers, market negotiation, code-switching)
 
-Tuganire combines a GPT-4o LLM for base translation, a native post-processing layer (5 correction rules + a golden dictionary), and purpose-built vocoder models (Whisper STT + MMS-TTS for Kinyarwanda audio).
+Tuganire combines a GPT-4o LLM for base translation, a native post-processing layer (5 correction rules + a golden dictionary), and purpose-built voice models (Whisper STT + Proto.cx / MMS-TTS for Kinyarwanda audio).
 
 ## Architecture
 
@@ -39,7 +39,7 @@ com.tuganire/
 ├── translation/     TranslationService, FrenchNormalizer, GoldenDictionaryService
 ├── llm/             LlmProvider interface, OpenAI + Claude implementations, ProviderFactory
 ├── postprocessor/   KinyarwandaPostProcessor, 5 CorrectionRule implementations
-├── tts/             TtsProvider interface, MMS-TTS + OpenAI + ElevenLabs implementations
+├── tts/             TtsProvider interface, Proto.cx + MMS-TTS implementations
 ├── stt/             SttProvider interface, Whisper implementation
 ├── feedback/        FeedbackService, Feedback entity, FeedbackRepo
 ├── cache/           Redis-backed TranslationCache
@@ -97,7 +97,7 @@ The app starts on [http://localhost:8080](http://localhost:8080).
 
 ### 5. Run the TTS server (optional)
 
-The MMS-TTS server is only needed for Kinyarwanda voice synthesis. When `MMS_TTS_URL` points to a running server the backend uses it; otherwise it falls back to OpenAI TTS.
+Kinyarwanda voice synthesis uses the Proto.cx native voice by default. The local MMS-TTS server is the fallback (used when Proto is unconfigured or fails) and also handles French. When `MMS_TTS_URL` points to a running server the backend uses it.
 
 ```bash
 cd tts-server
@@ -129,17 +129,19 @@ See [docs/ARCHI.md §6](docs/ARCHI.md) for the full endpoint list and WebSocket 
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key (GPT-4o translation, Whisper STT, OpenAI TTS) |
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key (GPT-4o translation, Whisper STT) |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key (Claude fallback LLM) |
 | `DATABASE_URL` | Yes | `jdbc:postgresql://localhost:5432/tuganire` | PostgreSQL JDBC URL |
 | `DATABASE_USER` | Yes | `tuganire` | PostgreSQL username |
 | `DATABASE_PASSWORD` | Yes | `tuganire` | PostgreSQL password |
 | `REDIS_URL` | Yes | `redis://localhost:6379` | Redis connection URL |
-| `MMS_TTS_URL` | No | `http://localhost:8000` | Python MMS-TTS server URL |
+| `MMS_TTS_URL` | No | `http://localhost:8000` | Python MMS-TTS server URL (fallback voice + French) |
 | `BASE_URL` | No | `http://localhost:8080` | Public base URL (used in emails/links) |
-| `ELEVENLABS_API_KEY` | No | — | ElevenLabs API key (optional TTS provider) |
-| `TUGANIRE_TTS_KINY_PROVIDER` | No | `mms` | TTS provider for Kinyarwanda (`mms`, `openai`, `elevenlabs`) |
-| `TUGANIRE_TTS_FRENCH_PROVIDER` | No | `openai` | TTS provider for French |
+| `PROTO_TTS_URL` | No | `https://v3-api.proto.cx/api` | Proto.cx Voice API base URL (native Kinyarwanda TTS) |
+| `PROTO_TTS_SUBCOMPANY_ID` | No | — | Proto.cx teamspace id; blank → MMS fallback |
+| `PROTO_TTS_TOKEN` | No | — | Proto.cx API token; blank → MMS fallback |
+| `PROTO_TTS_GENDER` | No | `female` | Proto.cx voice gender (`female`, `male`) |
+| `KINY_TTS_PROVIDER` | No | `proto` | TTS provider for Kinyarwanda (`proto`, `mms`) |
 | `TUGANIRE_LLM_DEFAULT_PROVIDER` | No | `openai` | Default LLM provider (`openai`, `anthropic`) |
 | `TUGANIRE_RATE_LIMIT_RPM` | No | `60` | Rate limit: requests per minute per IP |
 | `TUGANIRE_RATE_LIMIT_RPD` | No | `1000` | Rate limit: requests per day per IP |
@@ -245,8 +247,8 @@ Add new feature migrations starting at the next available version number.
 | **API** | Spring MVC + WebSocket, SpringDoc OpenAPI (Swagger UI) |
 | **Persistence** | Spring Data JPA + Hibernate 6, Flyway, PostgreSQL 16 |
 | **Cache** | Spring Data Redis (Lettuce), Redis 7 |
-| **AI** | Spring AI 2.0 — OpenAI (GPT-4o + Whisper + TTS), Anthropic (Claude fallback) |
-| **TTS** | `facebook/mms-tts-kin` (Kinyarwanda), `facebook/mms-tts-fra` (French) via FastAPI |
+| **AI** | Spring AI 2.0 — OpenAI (GPT-4o + Whisper), Anthropic (Claude fallback) |
+| **TTS** | Proto.cx native Kinyarwanda voice (default); `facebook/mms-tts-kin` / `facebook/mms-tts-fra` via FastAPI (fallback + French) |
 | **Web POC** | Thymeleaf, Tailwind CSS v4, DaisyUI, HTMX, Alpine.js |
 | **Security** | Spring Security, Bucket4j rate-limiting, CORS whitelist, CSRF |
 | **Observability** | Spring Boot Actuator, Micrometer, OpenTelemetry (Spring Boot 4 native) |

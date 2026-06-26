@@ -1,3 +1,16 @@
+import os
+
+# ── CPU thread pinning (MUST run before torch/transformers import) ───────────
+# On a shared/virtualised CPU (Railway, k8s…) PyTorch otherwise spawns one thread per HOST core
+# (often 32) while the container is only granted a fraction of a vCPU. The oversubscribed threads
+# blow through the cgroup CFS quota each scheduling period and get throttled (frozen) for the rest
+# of it — inflating a ~2s Kinyarwanda transcription to ~80s. Pinning every BLAS/OpenMP/torch pool
+# to the real allocation removes the throttle-storm. Tune via TORCH_NUM_THREADS to match the plan's
+# vCPU (e.g. 2 on a small instance); the default is conservative.
+_THREADS = os.environ.get("TORCH_NUM_THREADS", "4")
+for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, _THREADS)
+
 from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel
 from transformers import VitsModel, AutoTokenizer, Wav2Vec2ForCTC, AutoProcessor
@@ -25,7 +38,9 @@ def get_device() -> torch.device:
 
 
 device = get_device()
-logger.info(f"Using device: {device}")
+# Pin the intra-op thread pool too (env vars above cover OpenMP/BLAS; this covers torch's own pool).
+torch.set_num_threads(int(_THREADS))
+logger.info(f"Using device: {device} (torch threads: {torch.get_num_threads()})")
 
 # ── TTS models (speech synthesis) ───────────────────────────────────────────
 MODELS: dict = {
@@ -38,6 +53,34 @@ MODELS: dict = {
         "tokenizer": AutoTokenizer.from_pretrained("facebook/mms-tts-fra"),
     },
 }
+
+# ── VITS voice tuning (articulation) ────────────────────────────────────────
+# The native MMS Kinyarwanda voice runs words together and wobbles ("foreign accent")
+# at its defaults (speaking_rate=1.0, noise_scale=0.667). Two knobs sharpen it:
+#   • speaking_rate < 1.0  → slower delivery, crisper consonants (clearer articulation)
+#   • noise_scale  < 0.667 → less random variation, steadier/more native pronunciation
+#   • noise_scale_duration → rhythm jitter; lower = more even pacing
+# All env-tunable so the voice can be A/B'd by ear without code changes, then restart the server.
+# fr keeps near-defaults (the cloud FR voice is the primary one; MMS-fra is a fallback).
+_VOICE_TUNING: dict = {
+    "rw": {
+        "speaking_rate": float(os.environ.get("MMS_RW_SPEAKING_RATE", "0.9")),
+        "noise_scale": float(os.environ.get("MMS_RW_NOISE_SCALE", "0.55")),
+        "noise_scale_duration": float(os.environ.get("MMS_RW_NOISE_SCALE_DURATION", "0.7")),
+    },
+    "fr": {
+        "speaking_rate": float(os.environ.get("MMS_FR_SPEAKING_RATE", "1.0")),
+        "noise_scale": float(os.environ.get("MMS_FR_NOISE_SCALE", "0.667")),
+        "noise_scale_duration": float(os.environ.get("MMS_FR_NOISE_SCALE_DURATION", "0.8")),
+    },
+}
+for _lang, _tuning in _VOICE_TUNING.items():
+    _vits = MODELS[_lang]["model"]
+    # transformers VitsModel reads these instance attributes at inference time.
+    _vits.speaking_rate = _tuning["speaking_rate"]
+    _vits.noise_scale = _tuning["noise_scale"]
+    _vits.noise_scale_duration = _tuning["noise_scale_duration"]
+    logger.info(f"VITS {_lang} voice tuned: {_tuning}")
 
 # ── ASR model (speech recognition) ──────────────────────────────────────────
 # Meta MMS covers 1000+ languages including Kinyarwanda ("kin") — far better than

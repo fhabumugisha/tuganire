@@ -109,7 +109,7 @@
 │  │            COUCHE PROVIDERS (interfaces)                  │  │
 │  │  • SttProvider (Whisper, Web Speech, MMS-ASR)             │  │
 │  │  • LlmProvider (GPT-4o, Claude, NLLB)                     │  │
-│  │  • TtsProvider (MMS-TTS, OpenAI, ElevenLabs)              │  │
+│  │  • TtsProvider (Proto.cx, MMS-TTS)                        │  │
 │  └─────────────────────────┬────────────────────────────────┘  │
 │                            │                                     │
 │  ┌─────────────────────────▼────────────────────────────────┐  │
@@ -252,17 +252,12 @@ public class MmsTtsProvider implements TtsProvider {
 }
 
 @Component
-public class OpenAiTtsProvider implements TtsProvider {
-    public String name() { return "openai"; }
-    public boolean supportsLanguage(String lang) { return true; }
-    public byte[] synthesize(String text, String lang) { /* appel Spring AI OpenAI */ }
-}
-
-@Component
-public class ElevenLabsTtsProvider implements TtsProvider {
-    public String name() { return "elevenlabs"; }
-    public boolean supportsLanguage(String lang) { return true; }
-    public byte[] synthesize(String text, String lang) { /* appel ElevenLabs */ }
+public class ProtoTtsProvider implements TtsProvider {
+    public String name() { return "proto"; }
+    public boolean supportsLanguage(String lang) { return Set.of("rw", "kj").contains(lang); }
+    // Voix kinyarwanda native ; repli automatique sur MMS si Proto.cx n'est pas
+    // configuré (id/token absents) ou si l'appel distant échoue.
+    public byte[] synthesize(String text, String lang) { /* appel Proto.cx, sinon MMS */ }
 }
 
 // Factory dynamique
@@ -286,8 +281,8 @@ public class TtsProviderFactory {
 @ConfigurationProperties(prefix = "tuganire.tts")
 public record TtsConfig(
     String defaultProvider,
-    String kinyProvider,    // ex: "mms" pour kinyarwanda
-    String frenchProvider   // ex: "openai" pour français
+    String kinyProvider,    // "proto" (défaut) pour kinyarwanda, repli "mms"
+    String frenchProvider   // "mms" pour français
 ) {}
 ```
 
@@ -844,9 +839,9 @@ spring.mvc.apiversion.use.path-segment: v
 
 tuganire:
   tts:
-    default-provider: openai
-    kiny-provider: mms            # MMS-TTS pour kinyarwanda
-    french-provider: openai       # OpenAI TTS pour français
+    default-provider: proto
+    kiny-provider: proto          # Proto.cx natif, repli MMS-TTS
+    french-provider: mms          # MMS-TTS pour français
   stt:
     default-provider: whisper
   llm:
@@ -1037,8 +1032,7 @@ tuganire-backend/
 │   │   │   │
 │   │   │   ├── tts/
 │   │   │   │   ├── TtsProvider.java        (interface)
-│   │   │   │   ├── OpenAiTtsProvider.java
-│   │   │   │   ├── ElevenLabsTtsProvider.java
+│   │   │   │   ├── ProtoTtsProvider.java
 │   │   │   │   ├── MmsTtsProvider.java
 │   │   │   │   ├── TtsProviderFactory.java
 │   │   │   │   └── TtsService.java
@@ -1206,14 +1200,14 @@ jobs:
 ```bash
 # Backend Cloud Run
 OPENAI_API_KEY=sk-...
-ELEVENLABS_API_KEY=...  # optionnel
 DATABASE_URL=jdbc:postgresql://...
 DATABASE_USER=...
 DATABASE_PASSWORD=...
 REDIS_URL=rediss://...
-MMS_TTS_URL=https://mms.tuganire.app  # serveur Python
-TUGANIRE_TTS_KINY_PROVIDER=mms
-TUGANIRE_TTS_FRENCH_PROVIDER=openai
+MMS_TTS_URL=https://mms.tuganire.app  # serveur Python (repli + français)
+PROTO_TTS_SUBCOMPANY_ID=...  # voix kinyarwanda native ; vide → repli MMS
+PROTO_TTS_TOKEN=...
+KINY_TTS_PROVIDER=proto
 ```
 
 ---
@@ -1243,7 +1237,7 @@ TUGANIRE_TTS_FRENCH_PROVIDER=openai
 tuganire.translations.total{src="fr",tgt="rw",cached="true|false",golden="true|false"}
 tuganire.translations.latency.seconds{stage="stt|normalize|llm|postprocess|tts"}
 tuganire.feedback.total{type="thumbs_up|thumbs_down|correction"}
-tuganire.providers.usage{type="tts|stt|llm",name="openai|mms|elevenlabs"}
+tuganire.providers.usage{type="tts|stt|llm",name="proto|mms|openai|anthropic"}
 
 # Métriques techniques
 tuganire.api.requests.total{endpoint="...",status="..."}
@@ -1252,7 +1246,7 @@ tuganire.virtual.threads.active
 
 # Coûts API
 tuganire.cost.openai.tokens.total{model="gpt-4o"}
-tuganire.cost.elevenlabs.chars.total
+tuganire.cost.proto.chars.total
 ```
 
 ### Dashboards Grafana à créer
@@ -1339,17 +1333,17 @@ Ce test évalue les 65 phrases du corpus et compare aux versions précédentes. 
 ### ADR-004 : Strategy Pattern pour les providers (pas profils Spring)
 - **Choix** : `TtsProviderFactory` avec `Map<String, TtsProvider>` injectée
 - **Raison** : switchable à la **runtime**, pas au démarrage (mode comparateur, A/B testing)
-- **Bénéfice** : `?provider=elevenlabs` dans l'URL change le comportement immédiatement
+- **Bénéfice** : `?provider=mms` dans l'URL change le comportement immédiatement
 
 ### ADR-005 : LLM + Post-processor (pas LLM seul)
 - **Choix** : 5 règles correctives implémentées en Java après l'appel LLM
 - **Raison** : 5 catégories d'erreurs structurelles documentées chez GPT-4o et Claude
 - **Bénéfice** : qualité garantie, pas dépendant du modèle LLM choisi
 
-### ADR-006 : MMS-TTS pour kinyarwanda (pas OpenAI ou ElevenLabs)
-- **Choix** : `facebook/mms-tts-kin` auto-hébergé en Python sur GPU
-- **Raison** : seul modèle entraîné nativement sur kinyarwanda, pas de phonétique approximative
-- **Trade-off** : qualité vocale plus robotique mais prononciation correcte
+### ADR-006 : Proto.cx (défaut) + MMS-TTS pour kinyarwanda (pas OpenAI ou ElevenLabs)
+- **Choix** : voix kinyarwanda native Proto.cx par défaut, repli sur `facebook/mms-tts-kin` auto-hébergé en Python sur GPU
+- **Raison** : Proto.cx offre une voix kinyarwanda plus naturelle ; MMS reste le filet de sécurité (offline, modèle entraîné nativement sur kinyarwanda) quand Proto n'est pas configuré ou échoue
+- **Trade-off** : Proto = dépendance réseau/quota externe ; MMS = qualité plus robotique mais prononciation correcte et auto-hébergée. Le repli automatique garantit qu'un appel renvoie toujours de l'audio.
 
 ### ADR-008 : Stratégie de migration Spring AI 2.0-M4 → GA
 - **Choix** : démarrer sur Spring AI 2.0-M4, migrer vers la GA quand elle sort

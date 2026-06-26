@@ -21,6 +21,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# ---- load local secrets ----------------------------------------------------
+# Export everything in .env (gitignored) so the Spring backend picks up secrets
+# like PROTO_TTS_TOKEN / OPENAI_API_KEY without baking them into any config file.
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 # ---- flags -----------------------------------------------------------------
 START_TTS=false
 WATCH_CSS=false

@@ -36,7 +36,7 @@ class TtsProviderFactory {
      * Returns the provider with the given canonical name.
      *
      * @param name
-     *            provider name (e.g. {@code "mms"}, {@code "openai"})
+     *            provider name (e.g. {@code "proto"}, {@code "mms"})
      * @return the matching provider
      * @throws IllegalArgumentException
      *             if no provider with that name is registered

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/base}">
+<head>
+    <title th:text="#{text.title}">Traduire un texte</title>
+</head>
+<body>
+
+<!--
+    Text-translation screen (US "tourist pastes a received SMS").
+    A visitor who receives a written message in Kinyarwanda pastes it here and reads the translation.
+
+    Implementation note: this page does NOT introduce a new backend path. It posts to the SAME
+    POST /translate HTMX endpoint used by the voice screen (WebController) and swaps in the same
+    fragments/translation :: bubble fragment — so the translation is also read aloud, copyable, and
+    rateable, exactly like a spoken translation. Direction defaults to RW → FR (the tourist receives
+    Kinyarwanda) and can be swapped.
+-->
+<div layout:fragment="content"
+     x-data="textTranslate()"
+     x-init="init()"
+     class="flex flex-col min-h-[calc(100dvh-3.5rem)]">
+
+    <!-- i18n bridge: language names for the direction chips, so the JS/markup never hardcodes text. -->
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.tuganireMessages = window.tuganireMessages || {};
+        Object.assign(window.tuganireMessages, {
+            langNameFr: /*[[#{lang.code.fr}]]*/ 'Français',
+            langNameRw: /*[[#{lang.code.rw}]]*/ 'Ikinyarwanda'
+        });
+        /*]]>*/
+    </script>
+
+    <div class="flex-1 overflow-y-auto px-4 py-6 max-w-2xl mx-auto w-full pb-[9rem]">
+
+        <!-- Page heading + value proposition -->
+        <h1 class="text-xl font-semibold text-base-content mb-1" th:text="#{text.title}">
+            Traduire un texte
+        </h1>
+        <p class="text-sm text-base-content/60 mb-6" th:text="#{text.subtitle}">
+            Collez un message reçu (SMS, WhatsApp…) et lisez la traduction.
+        </p>
+
+        <!-- ── Input card ──────────────────────────────────────────────────── -->
+        <form th:hx-post="@{/translate}"
+              hx-target="#text-results"
+              hx-swap="beforeend"
+              @htmx:before-request="translating = true; showError = false"
+              @htmx:after-request="translating = false;
+                                   if ($event.detail.successful) {
+                                       hasResults = true; sourceText = '';
+                                       $nextTick(() => scrollToResults());
+                                   } else {
+                                       showError = true;
+                                   }">
+
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <input type="hidden" name="sessionId"  x-bind:value="sessionId">
+            <input type="hidden" name="sourceLang" x-bind:value="sourceLang">
+            <input type="hidden" name="targetLang" x-bind:value="targetLang">
+
+            <!-- Direction selector: FROM → TO with a swap button -->
+            <div class="flex items-center justify-center gap-3 mb-3">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-base-200 border border-base-300"
+                      :class="sourceLang === 'fr' ? 'text-primary' : 'text-accent'">
+                    <span class="text-xs font-semibold uppercase" x-text="sourceLang"></span>
+                    <span class="text-xs font-medium text-base-content/70"
+                          x-text="sourceLang === 'fr' ? window.tuganireMessages.langNameFr : window.tuganireMessages.langNameRw"></span>
+                </span>
+
+                <button type="button"
+                        class="btn btn-ghost btn-circle btn-sm min-h-9 w-9 text-base-content/50
+                               hover:text-primary hover:bg-primary/10 transition-colors duration-150
+                               focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                        @click="swapDirection()"
+                        th:aria-label="#{text.swap}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+                    </svg>
+                </button>
+
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-base-200 border border-base-300"
+                      :class="targetLang === 'fr' ? 'text-primary' : 'text-accent'">
+                    <span class="text-xs font-semibold uppercase" x-text="targetLang"></span>
+                    <span class="text-xs font-medium text-base-content/70"
+                          x-text="targetLang === 'fr' ? window.tuganireMessages.langNameFr : window.tuganireMessages.langNameRw"></span>
+                </span>
+            </div>
+
+            <!-- Paste area -->
+            <label for="text-source" class="sr-only" th:text="#{text.inputLabel}">Texte à traduire</label>
+            <textarea id="text-source"
+                      name="sourceText"
+                      x-model="sourceText"
+                      rows="4"
+                      class="textarea textarea-bordered w-full text-base resize-y mb-3"
+                      th:placeholder="#{text.placeholder}"
+                      th:aria-label="#{text.inputLabel}"
+                      required></textarea>
+
+            <!-- Translate button -->
+            <button type="submit"
+                    class="btn btn-primary w-full min-h-12 h-12 gap-2 text-base font-semibold
+                           transition-all duration-150 active:scale-[0.98]
+                           focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    :disabled="!sourceText.trim() || translating">
+                <span x-show="!translating" class="inline-flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                         stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="m10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 0 1-3.827-5.802"/>
+                    </svg>
+                    <span th:text="#{text.translate}">Traduire</span>
+                </span>
+                <span x-show="translating" x-cloak class="inline-flex items-center gap-2">
+                    <span class="loading loading-dots loading-sm" aria-hidden="true"></span>
+                    <span th:text="#{status.translating}">Traduction en cours…</span>
+                </span>
+            </button>
+        </form>
+
+        <!-- Error banner: shown when the /translate request fails (non-2xx). The pasted text is
+             preserved (not cleared) so the user can simply retry. -->
+        <div x-show="showError"
+             x-cloak
+             role="alert"
+             class="alert alert-error mt-3 text-sm">
+            <span th:text="#{error.translateFailed}">Échec de la traduction. Veuillez réessayer.</span>
+        </div>
+
+        <!-- ── Results ─────────────────────────────────────────────────────── -->
+        <!-- Empty hint: shown before the first translation -->
+        <p x-show="!hasResults"
+           x-cloak
+           class="text-center text-xs text-base-content/40 mt-8"
+           th:text="#{text.empty.hint}">
+            La traduction s'affichera ici et sera lue à voix haute.
+        </p>
+
+        <div id="text-results"
+             class="mt-6"
+             role="log"
+             aria-live="polite"
+             th:aria-label="#{aria.conversation}">
+            <!-- Translation bubbles injected by HTMX (fragments/translation :: bubble) -->
+        </div>
+    </div>
+</div>
+
+<!-- ── Page scripts ───────────────────────────────────────────────────────── -->
+<th:block layout:fragment="scripts">
+    <script>
+        /**
+         * Minimal Alpine component for the text-translation screen.
+         * Holds the paste text, the translation direction, and an anonymous session id (for
+         * feedback correlation). Posting and bubble rendering are handled by HTMX + the shared
+         * POST /translate endpoint, so there is no fetch/translation logic here.
+         */
+        function textTranslate() {
+            return {
+                sourceText: '',
+                // Default direction targets the "tourist receives a Kinyarwanda message" case: RW → FR.
+                sourceLang: 'rw',
+                targetLang: 'fr',
+                sessionId: '',
+                translating: false,
+                hasResults: false,
+                showError: false,
+
+                init() {
+                    // Stable anonymous session id so thumbs-up/down feedback correlates within the visit.
+                    let sid = localStorage.getItem('tuganire.session');
+                    if (!sid) {
+                        sid = (crypto && crypto.randomUUID)
+                            ? crypto.randomUUID()
+                            : 'sess-' + Math.random().toString(36).slice(2);
+                        localStorage.setItem('tuganire.session', sid);
+                    }
+                    this.sessionId = sid;
+                },
+
+                swapDirection() {
+                    const s = this.sourceLang;
+                    this.sourceLang = this.targetLang;
+                    this.targetLang = s;
+                },
+
+                scrollToResults() {
+                    const list = document.getElementById('text-results');
+                    const last = list && list.lastElementChild;
+                    if (last && last.scrollIntoView) {
+                        last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                }
+            };
+        }
+    </script>
+</th:block>
+
+</body>
+</html>
