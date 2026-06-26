@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `tuganire` — a Spring Boot 3.5 + Java 21 SaaS starter (`com.tuganire`). Forked apps rename the base package; see README "Forking This Template".
 
+## Branching workflow
+
+- **`develop`** is the default integration branch — **all feature work branches off `develop` and all PRs target `develop`**. When running `/commit`, opening PRs, or creating feature branches, use `develop` as the base, **not** `main`.
+- **`main`** is the protected release/stable branch. It is **protected**: changes land only via PR with the `Build & verify` CI check passing (branch must be up to date). Promote `develop → main` with a release PR; never push directly to `main`.
+- Feature branch naming follows the existing convention (`feat/…`, `fix/…`, `perf/…`, `docs/…`).
+
 ## Commands
 
 ```bash
