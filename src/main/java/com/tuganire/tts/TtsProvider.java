@@ -27,7 +27,7 @@ public interface TtsProvider {
     byte[] synthesize(String text, String languageCode);
 
     /**
-     * Returns the canonical name of this provider (e.g. {@code "openai"}, {@code "mms"}).
+     * Returns the canonical name of this provider (e.g. {@code "proto"}, {@code "mms"}).
      *
      * @return provider name
      */

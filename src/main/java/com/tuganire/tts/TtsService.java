@@ -31,7 +31,7 @@ public interface TtsService {
      * @param language
      *            locale used for provider routing when {@code providerOverride} is {@code null}
      * @param providerOverride
-     *            canonical provider name to force (e.g. {@code "openai"}), or {@code null} to use the default routing
+     *            canonical provider name to force (e.g. {@code "proto"}), or {@code null} to use the default routing
      * @return raw audio bytes (format depends on the provider)
      */
     byte[] synthesize(String text, Locale language, @Nullable String providerOverride);

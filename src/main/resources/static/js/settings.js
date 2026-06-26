@@ -303,11 +303,16 @@ function settings() {
         /**
          * Fetches GET /api/v1/providers and populates the <select>.
          *
-         * The endpoint (SessionController) returns an object:
-         *   { "ttsProviders": ["elevenlabs","mms","openai"], ...,
-         *     "activeTtsProvider": "elevenlabs" }
+         * The endpoint (ProvidersController) returns an object:
+         *   { "ttsProviders": ["proto","mms"], ...,
+         *     "activeTtsProvider": "proto" }
+         * Only Proto (default) and MMS (fallback) are registered.
          */
         async loadProviders() {
+            // Friendly labels keyed by provider id; falls back to capitalising the id.
+            const LABELS = { proto: 'Proto', mms: 'MMS' };
+            // Preferred display order — Proto (default) first, then MMS.
+            const ORDER = ['proto', 'mms'];
             try {
                 const resp = await fetch('/api/v1/providers', {
                     headers: { Accept: 'application/json' },
@@ -322,9 +327,14 @@ function settings() {
                     this.providerError = true;
                     return;
                 }
+                names.sort((a, b) => {
+                    const ia = ORDER.indexOf(a);
+                    const ib = ORDER.indexOf(b);
+                    return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib);
+                });
                 this.providers = names.map((id) => ({
                     id,
-                    name: id.charAt(0).toUpperCase() + id.slice(1),
+                    name: LABELS[id] || id.charAt(0).toUpperCase() + id.slice(1),
                 }));
                 this.selectedProvider = data.activeTtsProvider && names.includes(data.activeTtsProvider)
                     ? data.activeTtsProvider

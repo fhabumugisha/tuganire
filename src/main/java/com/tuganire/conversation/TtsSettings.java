@@ -1,5 +1,6 @@
 package com.tuganire.conversation;
 
+import com.tuganire.config.TtsConfig;
 import com.tuganire.tts.TtsProvider;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,8 +21,21 @@ public class TtsSettings {
 
     private final AtomicReference<String> activeProvider;
 
-    public TtsSettings(List<TtsProvider> ttsProviders) {
-        this.activeProvider = new AtomicReference<>(ttsProviders.isEmpty() ? NONE : ttsProviders.get(0).name());
+    public TtsSettings(List<TtsProvider> ttsProviders, TtsConfig ttsConfig) {
+        this.activeProvider = new AtomicReference<>(initialProvider(ttsProviders, ttsConfig));
+    }
+
+    /**
+     * Resolves the initial active provider: the configured {@code default-provider} when it is actually registered,
+     * otherwise the first registered provider, or {@code "none"} when none are registered.
+     */
+    private static String initialProvider(List<TtsProvider> ttsProviders, TtsConfig ttsConfig) {
+        if (ttsProviders.isEmpty()) {
+            return NONE;
+        }
+        String configured = ttsConfig.defaultProvider();
+        boolean registered = ttsProviders.stream().anyMatch(p -> p.name().equals(configured));
+        return registered ? configured : ttsProviders.get(0).name();
     }
 
     /** @return the name of the currently active TTS provider, or {@code "none"} if no provider is registered */

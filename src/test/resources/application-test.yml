@@ -33,9 +33,9 @@ tuganire:
     default-provider: openai
     fallback-provider: anthropic
   tts:
-    default-provider: openai
+    default-provider: mms
     kiny-provider: mms
-    french-provider: openai
+    french-provider: mms
   stt:
     default-provider: whisper
   mms:

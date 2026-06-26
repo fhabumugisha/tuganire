@@ -19,10 +19,6 @@ spring:
         transcription:
           options:
             model: whisper-1
-        speech:
-          options:
-            model: gpt-4o-mini-tts
-            voice: alloy
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:}
       # Same rationale as `spring.ai.openai.timeout` — caps the time a Claude call can hold the
@@ -88,10 +84,12 @@ server:
 
 tuganire:
   tts:
-    default-provider: openai
+    # Only two providers are registered: Proto.cx (default) and MMS (fallback).
+    default-provider: proto
     # Kinyarwanda voice: Proto.cx native voice (falls back to MMS when unconfigured or on error).
     kiny-provider: ${KINY_TTS_PROVIDER:proto}
-    french-provider: openai
+    # French is not modelled by Proto, so route it to the local MMS voice.
+    french-provider: mms
   # Proto.cx Voice API (native Kinyarwanda TTS). Secrets are env-driven; blank → MMS fallback.
   proto:
     base-url: ${PROTO_TTS_URL:https://v3-api.proto.cx/api}
