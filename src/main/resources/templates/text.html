@@ -47,9 +47,14 @@
         <form th:hx-post="@{/translate}"
               hx-target="#text-results"
               hx-swap="beforeend"
-              @htmx:before-request="translating = true"
-              @htmx:after-request="translating = false; hasResults = true; sourceText = '';
-                                   $nextTick(() => scrollToResults())">
+              @htmx:before-request="translating = true; showError = false"
+              @htmx:after-request="translating = false;
+                                   if ($event.detail.successful) {
+                                       hasResults = true; sourceText = '';
+                                       $nextTick(() => scrollToResults());
+                                   } else {
+                                       showError = true;
+                                   }">
 
             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
             <input type="hidden" name="sessionId"  x-bind:value="sessionId">
@@ -118,6 +123,15 @@
             </button>
         </form>
 
+        <!-- Error banner: shown when the /translate request fails (non-2xx). The pasted text is
+             preserved (not cleared) so the user can simply retry. -->
+        <div x-show="showError"
+             x-cloak
+             role="alert"
+             class="alert alert-error mt-3 text-sm">
+            <span th:text="#{error.translateFailed}">Échec de la traduction. Veuillez réessayer.</span>
+        </div>
+
         <!-- ── Results ─────────────────────────────────────────────────────── -->
         <!-- Empty hint: shown before the first translation -->
         <p x-show="!hasResults"
@@ -155,6 +169,7 @@
                 sessionId: '',
                 translating: false,
                 hasResults: false,
+                showError: false,
 
                 init() {
                     // Stable anonymous session id so thumbs-up/down feedback correlates within the visit.
