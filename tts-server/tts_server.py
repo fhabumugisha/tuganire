@@ -54,6 +54,34 @@ MODELS: dict = {
     },
 }
 
+# ── VITS voice tuning (articulation) ────────────────────────────────────────
+# The native MMS Kinyarwanda voice runs words together and wobbles ("foreign accent")
+# at its defaults (speaking_rate=1.0, noise_scale=0.667). Two knobs sharpen it:
+#   • speaking_rate < 1.0  → slower delivery, crisper consonants (clearer articulation)
+#   • noise_scale  < 0.667 → less random variation, steadier/more native pronunciation
+#   • noise_scale_duration → rhythm jitter; lower = more even pacing
+# All env-tunable so the voice can be A/B'd by ear without code changes, then restart the server.
+# fr keeps near-defaults (the cloud FR voice is the primary one; MMS-fra is a fallback).
+_VOICE_TUNING: dict = {
+    "rw": {
+        "speaking_rate": float(os.environ.get("MMS_RW_SPEAKING_RATE", "0.9")),
+        "noise_scale": float(os.environ.get("MMS_RW_NOISE_SCALE", "0.55")),
+        "noise_scale_duration": float(os.environ.get("MMS_RW_NOISE_SCALE_DURATION", "0.7")),
+    },
+    "fr": {
+        "speaking_rate": float(os.environ.get("MMS_FR_SPEAKING_RATE", "1.0")),
+        "noise_scale": float(os.environ.get("MMS_FR_NOISE_SCALE", "0.667")),
+        "noise_scale_duration": float(os.environ.get("MMS_FR_NOISE_SCALE_DURATION", "0.8")),
+    },
+}
+for _lang, _tuning in _VOICE_TUNING.items():
+    _vits = MODELS[_lang]["model"]
+    # transformers VitsModel reads these instance attributes at inference time.
+    _vits.speaking_rate = _tuning["speaking_rate"]
+    _vits.noise_scale = _tuning["noise_scale"]
+    _vits.noise_scale_duration = _tuning["noise_scale_duration"]
+    logger.info(f"VITS {_lang} voice tuned: {_tuning}")
+
 # ── ASR model (speech recognition) ──────────────────────────────────────────
 # Meta MMS covers 1000+ languages including Kinyarwanda ("kin") — far better than
 # the browser Web Speech API, which loses negations and mangles Kinyarwanda.
