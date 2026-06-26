@@ -89,8 +89,15 @@ server:
 tuganire:
   tts:
     default-provider: openai
-    kiny-provider: mms
+    # Kinyarwanda voice: Proto.cx native voice (falls back to MMS when unconfigured or on error).
+    kiny-provider: ${KINY_TTS_PROVIDER:proto}
     french-provider: openai
+  # Proto.cx Voice API (native Kinyarwanda TTS). Secrets are env-driven; blank → MMS fallback.
+  proto:
+    base-url: ${PROTO_TTS_URL:https://v3-api.proto.cx/api}
+    subcompany-id: ${PROTO_TTS_SUBCOMPANY_ID:}
+    token: ${PROTO_TTS_TOKEN:}
+    gender: ${PROTO_TTS_GENDER:female}
   stt:
     default-provider: whisper
   llm:
