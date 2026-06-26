@@ -47,6 +47,18 @@ public class WebController {
     }
 
     /**
+     * Renders the text-translation screen: a tourist pastes text (e.g. a Kinyarwanda SMS received by text message) into
+     * a field and translates it. Reuses the {@code POST /translate} HTMX endpoint and the
+     * {@code fragments/translation :: bubble} fragment, so the translation is also read aloud.
+     *
+     * @return the logical view name resolved by Thymeleaf
+     */
+    @GetMapping("/text")
+    public String text() {
+        return "text";
+    }
+
+    /**
      * Renders the settings screen (TTS provider selector and UI language selector).
      *
      * @return the logical view name resolved by Thymeleaf
