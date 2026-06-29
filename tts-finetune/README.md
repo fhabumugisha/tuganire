@@ -15,6 +15,7 @@ replacing the robotic stock MMS output. **100% free tools.** See the full ration
 |------|---------|
 | `GUIDE-ENREGISTREMENT.md` | **Hand to the native speaker** — non-technical recording checklist (matériel, consignes, nommage) |
 | `make_prompts.py` | Generate varied Kinyarwanda sentences to read (Common Voice CC0 + your domain words) |
+| `domain_sentences_pastoral.txt` | 58 ready pastoral/church Kinyarwanda sentences (greetings, prayer, worship, Scripture, product words, numbers) — feed via `--extra` |
 | `prepare_dataset.py` | Normalise/segment/transcribe recordings → `wavs/` + `metadata.csv` |
 | `finetune_config.json` | Config for `ylacombe/finetune-hf-vits` |
 | `finetune_kaggle.ipynb` | Kaggle/Colab notebook: clone tool → train → A/B listen → push to Hub |
@@ -29,8 +30,8 @@ cd tts-finetune
 uv venv && source .venv/bin/activate
 uv pip install -r requirements.txt
 
-# 200 reading prompts (Common Voice rw + optional your-domain sentences)
-python make_prompts.py --n 200 --extra my_domain_sentences.txt --out prompts.txt
+# 200 reading prompts: pastoral domain sentences FIRST, then Common Voice rw for phonetic variety
+python make_prompts.py --n 200 --extra domain_sentences_pastoral.txt --out prompts.txt
 ```
 Record each numbered line as its own clip `0001.wav, 0002.wav, …` in a quiet room.
 **Tip:** because the prompt text *is* the transcription, you skip Whisper and get perfect alignment.
