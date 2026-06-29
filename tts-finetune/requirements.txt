@@ -1,0 +1,7 @@
+# Local dataset-prep deps (CPU is fine). ffmpeg must also be on PATH (brew install ffmpeg).
+# The fine-tuning itself runs on Kaggle/Colab via finetune-hf-vits' own requirements.txt.
+transformers>=4.44
+torch>=2.2
+soundfile>=0.12
+tqdm>=4.66
+datasets>=2.20        # only for make_prompts.py (Common Voice sentences)

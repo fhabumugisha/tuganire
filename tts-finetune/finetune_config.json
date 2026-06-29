@@ -1,0 +1,53 @@
+{
+  "//": "Config for ylacombe/finetune-hf-vits run_vits_finetuning.py — fine-tune the native Kinyarwanda MMS voice.",
+  "//models": "Base = facebook/mms-tts-kin (already knows rw phonetics; character tokenizer; NO uroman needed for Latin-script rw).",
+
+  "project_name": "mms-tts-kin-native",
+  "push_to_hub": true,
+  "hub_model_id": "YOUR_HF_USERNAME/mms-tts-kin-native",
+  "report_to": ["tensorboard"],
+  "overwrite_output_dir": true,
+  "output_dir": "./mms-tts-kin-native",
+
+  "model_name_or_path": "facebook/mms-tts-kin",
+
+  "dataset_name": "YOUR_HF_USERNAME/kinyarwanda-tts-single-speaker",
+  "//dataset_local": "Or set 'dataset_name' to a local folder produced by prepare_dataset.py (with metadata.csv).",
+  "audio_column_name": "audio",
+  "text_column_name": "transcription",
+  "train_split_name": "train",
+  "eval_split_name": "train",
+  "full_generation_sample_text": "Muraho neza, murakaza neza kuri Tuganire.",
+
+  "max_duration_in_seconds": 20.0,
+  "min_duration_in_seconds": 1.0,
+  "max_tokens_length": 500,
+
+  "preprocessing_num_workers": 4,
+  "do_train": true,
+  "num_train_epochs": 200,
+  "//epochs_note": "200 is a sane start for ~30-60 min of data. Watch eval samples; reduce if it overfits (metallic/buzzy), raise if still robotic.",
+  "gradient_accumulation_steps": 1,
+  "gradient_checkpointing": false,
+  "per_device_train_batch_size": 16,
+  "learning_rate": 2e-4,
+  "adam_beta1": 0.8,
+  "adam_beta2": 0.99,
+  "warmup_ratio": 0.01,
+
+  "group_by_length": false,
+  "do_eval": true,
+  "eval_steps": 50,
+  "per_device_eval_batch_size": 16,
+
+  "fp16": true,
+  "seed": 456,
+
+  "//loss_weights": "VITS multi-loss weights — defaults from the repo, good for single-speaker fine-tunes.",
+  "weight_disc": 3.0,
+  "weight_fmaps": 1.0,
+  "weight_gen": 1.0,
+  "weight_kl": 1.5,
+  "weight_duration": 1.0,
+  "weight_mel": 35.0
+}

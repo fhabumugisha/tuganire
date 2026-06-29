@@ -43,14 +43,21 @@ torch.set_num_threads(int(_THREADS))
 logger.info(f"Using device: {device} (torch threads: {torch.get_num_threads()})")
 
 # ── TTS models (speech synthesis) ───────────────────────────────────────────
+# Each voice's checkpoint is env-overridable so a fine-tuned native voice (see
+# tts-finetune/) can replace the stock MMS weights WITHOUT a code change — just set
+# MMS_RW_MODEL to the fine-tuned HuggingFace repo id and restart. Defaults keep the
+# stock Meta MMS checkpoints so the server boots without any fine-tuning done yet.
+_RW_MODEL_ID = os.environ.get("MMS_RW_MODEL", "facebook/mms-tts-kin")
+_FR_MODEL_ID = os.environ.get("MMS_FR_MODEL", "facebook/mms-tts-fra")
+logger.info(f"Loading TTS models — rw={_RW_MODEL_ID}, fr={_FR_MODEL_ID}")
 MODELS: dict = {
     "rw": {
-        "model": VitsModel.from_pretrained("facebook/mms-tts-kin").to(device),
-        "tokenizer": AutoTokenizer.from_pretrained("facebook/mms-tts-kin"),
+        "model": VitsModel.from_pretrained(_RW_MODEL_ID).to(device),
+        "tokenizer": AutoTokenizer.from_pretrained(_RW_MODEL_ID),
     },
     "fr": {
-        "model": VitsModel.from_pretrained("facebook/mms-tts-fra").to(device),
-        "tokenizer": AutoTokenizer.from_pretrained("facebook/mms-tts-fra"),
+        "model": VitsModel.from_pretrained(_FR_MODEL_ID).to(device),
+        "tokenizer": AutoTokenizer.from_pretrained(_FR_MODEL_ID),
     },
 }
 
