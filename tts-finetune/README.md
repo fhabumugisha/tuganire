@@ -13,6 +13,7 @@ replacing the robotic stock MMS output. **100% free tools.** See the full ration
 ## Files
 | File | Purpose |
 |------|---------|
+| `GUIDE-ENREGISTREMENT.md` | **Hand to the native speaker** — non-technical recording checklist (matériel, consignes, nommage) |
 | `make_prompts.py` | Generate varied Kinyarwanda sentences to read (Common Voice CC0 + your domain words) |
 | `prepare_dataset.py` | Normalise/segment/transcribe recordings → `wavs/` + `metadata.csv` |
 | `finetune_config.json` | Config for `ylacombe/finetune-hf-vits` |
