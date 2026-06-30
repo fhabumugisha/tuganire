@@ -11,7 +11,7 @@ _THREADS = os.environ.get("TORCH_NUM_THREADS", "4")
 for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_var, _THREADS)
 
-from fastapi import FastAPI, HTTPException, Response, Request
+from fastapi import FastAPI, HTTPException, Response, Request, Depends
 from pydantic import BaseModel
 from transformers import VitsModel, AutoTokenizer, Wav2Vec2ForCTC, AutoProcessor
 import torch
@@ -21,6 +21,7 @@ import io
 import re
 import time
 import subprocess
+import tempfile
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -98,6 +99,22 @@ ASR_SAMPLE_RATE = 16000
 # Map app language codes → MMS ISO-639-3 adapter codes.
 ASR_ADAPTERS: dict = {"rw": "kin", "fr": "fra"}
 
+# ── Request hardening ────────────────────────────────────────────────────────
+# The Spring backend caps uploads, but this service is separately addressable on Railway, so it must
+# enforce its own limits. ffmpeg runs on attacker-controlled media: cap decode DURATION and wall-clock
+# so a crafted/heavily-compressed clip cannot pin the CPU-only worker or blow up memory. The optional
+# shared secret gates both endpoints — active only when MMS_SHARED_SECRET is set here AND sent by the backend.
+MAX_UPLOAD_BYTES = int(os.environ.get("MMS_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+FFMPEG_TIMEOUT_S = int(os.environ.get("MMS_FFMPEG_TIMEOUT", "30"))
+MAX_DECODE_SECONDS = int(os.environ.get("MMS_MAX_DECODE_SECONDS", "30"))
+MMS_SHARED_SECRET = os.environ.get("MMS_SHARED_SECRET", "")
+
+
+def _require_secret(request: Request) -> None:
+    """Enforce the optional shared secret. No-op when MMS_SHARED_SECRET is unset (default)."""
+    if MMS_SHARED_SECRET and request.headers.get("X-MMS-Secret") != MMS_SHARED_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 asr_processor = AutoProcessor.from_pretrained(ASR_MODEL_ID)
 asr_model = Wav2Vec2ForCTC.from_pretrained(ASR_MODEL_ID).to(device)
 # Pre-load the Kinyarwanda adapter (the primary use-case).
@@ -120,17 +137,34 @@ _SILENCE_TRIM = (
 
 
 def _decode_to_waveform(raw: bytes) -> np.ndarray:
-    """Decode arbitrary audio bytes (WebM/Opus, MP4, WAV…) to 16 kHz mono float32 via ffmpeg, trimming edge silence."""
-    try:
-        proc = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error",
-             "-i", "pipe:0", "-af", _SILENCE_TRIM,
-             "-f", "f32le", "-ac", "1", "-ar", str(ASR_SAMPLE_RATE), "pipe:1"],
-            input=raw, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        logger.error(f"ffmpeg decode failed: {exc.stderr.decode('utf-8', 'ignore')[:500]}")
-        raise HTTPException(status_code=400, detail="Audio decode failed")
+    """Decode arbitrary audio bytes (WebM/Opus, MP4, WAV…) to 16 kHz mono float32 via ffmpeg, trimming edge silence.
+
+    The bytes are written to a temp file rather than piped to ffmpeg's stdin: iOS Safari's MediaRecorder
+    emits non-faststart MP4/AAC (the `moov` index atom sits at the END of the file). ffmpeg cannot seek
+    backwards on a non-seekable pipe (`pipe:0`), so it fails to decode that container — which is why only
+    iPhone recordings broke. A real file is seekable, so every container (WebM, iOS MP4, WAV…) decodes.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".audio") as tmp:
+        tmp.write(raw)
+        tmp.flush()
+        try:
+            proc = subprocess.run(
+                # `-t MAX_DECODE_SECONDS` caps how much audio is decoded (a small compressed clip can
+                # expand to hours); `timeout=` bounds wall-clock so a malformed container can't hang the worker.
+                ["ffmpeg", "-hide_banner", "-loglevel", "error",
+                 "-i", tmp.name, "-t", str(MAX_DECODE_SECONDS), "-af", _SILENCE_TRIM,
+                 "-f", "f32le", "-ac", "1", "-ar", str(ASR_SAMPLE_RATE), "pipe:1"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=FFMPEG_TIMEOUT_S,
+            )
+        except subprocess.CalledProcessError as exc:
+            logger.error(f"ffmpeg decode failed: {exc.stderr.decode('utf-8', 'ignore')[:500]}")
+            raise HTTPException(status_code=400, detail="Audio decode failed")
+        except subprocess.TimeoutExpired:
+            logger.error("ffmpeg decode timed out")
+            raise HTTPException(status_code=400, detail="Audio decode timed out")
+        except FileNotFoundError:
+            logger.error("ffmpeg binary not found")
+            raise HTTPException(status_code=503, detail="Audio decoder unavailable")
     return np.frombuffer(proc.stdout, dtype=np.float32)
 
 
@@ -173,12 +207,23 @@ def _encode_mp3(audio: np.ndarray, rate: int) -> bytes:
     """
     buf = io.BytesIO()
     scipy.io.wavfile.write(buf, rate=rate, data=audio)
-    proc = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error",
-         "-f", "wav", "-i", "pipe:0",
-         "-codec:a", "libmp3lame", "-q:a", "4", "-f", "mp3", "pipe:1"],
-        input=buf.getvalue(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error",
+             "-f", "wav", "-i", "pipe:0",
+             "-codec:a", "libmp3lame", "-q:a", "4", "-f", "mp3", "pipe:1"],
+            input=buf.getvalue(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+            timeout=FFMPEG_TIMEOUT_S,
+        )
+    except subprocess.CalledProcessError as exc:
+        logger.error(f"ffmpeg encode failed: {exc.stderr.decode('utf-8', 'ignore')[:500]}")
+        raise HTTPException(status_code=500, detail="Audio encode failed")
+    except subprocess.TimeoutExpired:
+        logger.error("ffmpeg encode timed out")
+        raise HTTPException(status_code=500, detail="Audio encode timed out")
+    except FileNotFoundError:
+        logger.error("ffmpeg binary not found")
+        raise HTTPException(status_code=503, detail="Audio encoder unavailable")
     return proc.stdout
 
 
@@ -222,7 +267,7 @@ def health() -> dict:
 
 
 @app.post("/tts")
-def synthesize(req: TtsRequest) -> Response:
+def synthesize(req: TtsRequest, _: None = Depends(_require_secret)) -> Response:
     if req.lang not in MODELS:
         raise HTTPException(status_code=400, detail=f"Langue non supportée : {req.lang}")
 
@@ -250,7 +295,7 @@ def synthesize(req: TtsRequest) -> Response:
 
 
 @app.post("/stt", response_model=SttResponse)
-async def transcribe(request: Request, lang: str = "rw") -> SttResponse:
+async def transcribe(request: Request, lang: str = "rw", _: None = Depends(_require_secret)) -> SttResponse:
     """Transcribe raw audio bytes (request body) to text using MMS-ASR.
 
     The Spring backend POSTs the recorded audio bytes with a `lang` query param.
@@ -258,9 +303,17 @@ async def transcribe(request: Request, lang: str = "rw") -> SttResponse:
     if lang not in ASR_ADAPTERS:
         raise HTTPException(status_code=400, detail=f"Langue non supportée : {lang}")
 
+    # Reject oversized uploads before buffering the whole body into memory (OOM guard); check the
+    # declared Content-Length first, then the actual size in case the header lies.
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Audio too large")
+
     raw = await request.body()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty audio")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Audio too large")
 
     start = time.time()
     waveform = _decode_to_waveform(raw)

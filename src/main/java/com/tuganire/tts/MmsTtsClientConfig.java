@@ -1,7 +1,7 @@
 package com.tuganire.tts;
 
+import com.tuganire.config.MmsProperties;
 import com.tuganire.config.TtsConfig;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,22 +17,22 @@ import org.springframework.web.service.registry.ImportHttpServices;
  * {@code RestTemplate} or manual factory wiring is required.
  */
 @Configuration
-@EnableConfigurationProperties(TtsConfig.class)
+@EnableConfigurationProperties({TtsConfig.class, MmsProperties.class})
 @ImportHttpServices(group = "mms-tts", types = MmsTtsClient.class)
 public class MmsTtsClientConfig {
 
     private static final String GROUP_NAME = "mms-tts";
 
     /**
-     * Configures the RestClient for the {@code mms-tts} HTTP service group.
+     * Configures the RestClient for the {@code mms-tts} HTTP service group: base URL plus a request factory carrying
+     * the MMS connect/read timeouts, so a cold-start wake of the (scale-to-zero) MMS server is not cut short.
      *
-     * @param mmsBaseUrl
-     *            base URL of the Python MMS-TTS server
-     * @return configurer that sets the base URL on the RestClient builder
+     * @param mms
+     *            MMS server connection properties (base URL + timeouts)
+     * @return configurer that sets the base URL and timeout-aware request factory on the RestClient builder
      */
     @Bean
-    public RestClientHttpServiceGroupConfigurer mmsTtsGroupConfigurer(
-            @Value("${tuganire.mms.base-url}") String mmsBaseUrl) {
-        return groups -> groups.filterByName(GROUP_NAME).forEachClient((group, builder) -> builder.baseUrl(mmsBaseUrl));
+    public RestClientHttpServiceGroupConfigurer mmsTtsGroupConfigurer(MmsProperties mms) {
+        return mms.groupConfigurer(GROUP_NAME);
     }
 }

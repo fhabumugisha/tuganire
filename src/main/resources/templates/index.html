@@ -23,6 +23,9 @@
         notAllowed:     /*[[#{error.micNotAllowed}]]*/  'Accès au microphone refusé.',
         audioCapture:   /*[[#{error.micNotFound}]]*/    'Microphone non trouvé.',
         networkError:   /*[[#{error.network}]]*/        'Erreur réseau. Vérifiez votre connexion.',
+        noSpeech:       /*[[#{error.noSpeech}]]*/       'Je n\'ai rien entendu. Réessayez en parlant plus près du micro.',
+        recordingHint:  /*[[#{status.recording.hint('{0}')}]]*/ 'Enregistrement… {0} s · touchez pour arrêter',
+        serverWarmup:   /*[[#{status.serverWarmup}]]*/ 'Réveil du serveur…',
         httpsRequired:  /*[[#{notice.speechApiUnsupported}]]*/ 'HTTPS requis en production.',
         translateFailed:/*[[#{error.translateFailed}]]*/ 'Échec de la traduction. Veuillez réessayer.',
         // Bubble labels + actions rebuilt client-side for the streaming path
@@ -183,8 +186,11 @@
                           :style="activeLang === 'fr' ? '--ring-color: var(--color-primary)' : '--ring-color: var(--color-accent)'"></span>
                     <span class="listening-ring listening-ring-3"
                           :style="activeLang === 'fr' ? '--ring-color: var(--color-primary)' : '--ring-color: var(--color-accent)'"></span>
-                    <span class="relative z-10 flex items-center justify-center w-8 h-8 rounded-full shadow-sm"
-                          :class="activeLang === 'fr' ? 'bg-primary' : 'bg-accent'">
+                    <!-- The mic icon pulses with the live mic level on the server-STT path (no live
+                         transcript there), giving a real "we hear you" cue. transition keeps it smooth. -->
+                    <span class="relative z-10 flex items-center justify-center w-8 h-8 rounded-full shadow-sm transition-transform duration-75"
+                          :class="activeLang === 'fr' ? 'bg-primary' : 'bg-accent'"
+                          :style="serverRecording ? ('transform: scale(' + (1 + micLevel * 0.5) + ')') : ''">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none"
                              viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -195,11 +201,25 @@
                 <span class="sr-only" th:text="#{status.listening}">Écoute...</span>
             </div>
 
-            <!-- Live transcript: shows what the mic is capturing, updated in real time -->
+            <!-- Live transcript: shows what the mic is capturing, updated in real time (Web Speech path) -->
             <p x-show="recording && liveTranscript"
                x-cloak
                x-text="liveTranscript"
                class="px-4 pb-2 text-center text-sm text-base-content/70 italic"></p>
+
+            <!-- Recording hint: the server-STT path (Kinyarwanda, French-OpenAI) has no live transcript,
+                 so confirm capture with an elapsed-time counter and a clear "tap to stop" instruction.
+                 The visible ticking counter is aria-hidden (would announce every second); a separate
+                 sr-only live region announces the static stop instruction once instead. -->
+            <p x-show="recording && serverRecording"
+               x-cloak
+               aria-hidden="true"
+               x-text="recordingHintText()"
+               class="px-4 pb-2 text-center text-sm text-base-content/70 italic"></p>
+            <span class="sr-only"
+                  aria-live="polite"
+                  x-show="recording && serverRecording"
+                  th:text="#{status.recording.instruction}">Touchez le bouton pour arrêter l'enregistrement.</span>
 
             <!-- Translating spinner -->
             <div class="flex justify-center pb-1"
@@ -208,6 +228,14 @@
                 <span class="loading loading-dots loading-sm text-primary" aria-hidden="true"></span>
                 <span class="sr-only" th:text="#{status.translating}">Traduction en cours...</span>
             </div>
+
+            <!-- Server warm-up notice: the MMS server is scale-to-zero, so the first request after idle
+                 waits ~30-60 s while it wakes. Shown after a short delay so it doesn't look frozen. -->
+            <p x-show="warmingUp"
+               x-cloak
+               aria-live="polite"
+               x-text="window.tuganireMessages?.serverWarmup || 'Réveil du serveur…'"
+               class="px-4 pb-2 text-center text-sm text-warning italic"></p>
 
             <!-- Text fallback panel -->
             <div x-show="!speechSupported"

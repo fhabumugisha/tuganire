@@ -48,7 +48,9 @@ public class SecurityConfig {
             + "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; "
             + "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
             + "img-src 'self' data:; " + "connect-src 'self'; " + "font-src 'self' https://fonts.gstatic.com; "
-            + "frame-ancestors 'none'; " + "object-src 'none'";
+            // media-src must allow data:/blob: — the TTS audio is same-origin ('self'), but the silent
+            // audio clip used to unlock playback on iOS/Safari is a data: URI and would otherwise be blocked.
+            + "media-src 'self' data: blob:; " + "frame-ancestors 'none'; " + "object-src 'none'";
 
     /**
      * Builds and exposes the application's {@link SecurityFilterChain}.

@@ -109,10 +109,14 @@ public class SttController {
 
         // Defensive content-type allowlist: reject obviously-wrong uploads before we read the bytes into memory. A
         // missing or empty Content-Type is treated as a malformed upload (some browsers send null for broken streams).
-        String contentType = audio.getContentType();
-        if (contentType == null || contentType.isBlank()
-                || !ALLOWED_AUDIO_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
-            log.debug("POST /stt/{} rejected: unsupported content-type '{}'", endpoint, contentType);
+        // Strip any media-type parameters (e.g. Safari may send "audio/mp4;codecs=mp4a.40.2") before matching,
+        // so a valid container is not rejected over a codecs hint.
+        String rawContentType = audio.getContentType();
+        String contentType = rawContentType == null
+                ? null
+                : rawContentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        if (contentType == null || contentType.isBlank() || !ALLOWED_AUDIO_CONTENT_TYPES.contains(contentType)) {
+            log.debug("POST /stt/{} rejected: unsupported content-type '{}'", endpoint, rawContentType);
             throw new BusinessException("stt.audio.unsupported-type");
         }
 

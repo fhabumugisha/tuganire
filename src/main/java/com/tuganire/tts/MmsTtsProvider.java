@@ -4,7 +4,10 @@ import com.tuganire.tts.MmsTtsClient.MmsTtsRequest;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.resilience.annotation.ConcurrencyLimit;
+import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
 
 /**
  * {@link TtsProvider} backed by the local Python MMS-TTS server (ADR-006).
@@ -40,6 +43,10 @@ class MmsTtsProvider implements TtsProvider {
     }
 
     @Override
+    @Retryable(maxRetries = 1, delay = 2000L, multiplier = 2.0, jitter = 500L, maxDelay = 8000L, includes = {
+            HttpServerErrorException.BadGateway.class, HttpServerErrorException.ServiceUnavailable.class,
+            HttpServerErrorException.GatewayTimeout.class})
+    @ConcurrencyLimit(3)
     public byte[] synthesize(String text, String languageCode) {
         log.debug("MMS TTS synthesize: lang={}, text length={}", languageCode, text.length());
         return mmsTtsClient.synthesize(new MmsTtsRequest(text, languageCode, USE_PAUSES));
