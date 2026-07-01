@@ -4,7 +4,10 @@ import java.util.Locale;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.resilience.annotation.ConcurrencyLimit;
+import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
 
 /**
  * {@link SttProvider} backed by the local Python MMS-ASR server.
@@ -35,7 +38,20 @@ class MmsSttProvider implements SttProvider {
         return SUPPORTED_LANGUAGES.contains(languageCode);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>
+     * Retries only on gateway 5xx (502/503/504) — the Railway edge's response while the scale-to-zero MMS server wakes.
+     * A read timeout (connection accepted but no response) means the server is busy inferring and is treated as
+     * terminal — retrying would pile a second heavy job onto it. {@code @ConcurrencyLimit} caps concurrent calls so a
+     * wake spike cannot overwhelm the single MMS instance.
+     */
     @Override
+    @Retryable(maxRetries = 1, delay = 2000L, multiplier = 2.0, jitter = 500L, maxDelay = 8000L, includes = {
+            HttpServerErrorException.BadGateway.class, HttpServerErrorException.ServiceUnavailable.class,
+            HttpServerErrorException.GatewayTimeout.class})
+    @ConcurrencyLimit(3)
     public String transcribe(byte[] audio, Locale language) {
         String langCode = language.getLanguage();
         log.debug("MMS STT transcribe: lang={}, {} bytes", langCode, audio.length);

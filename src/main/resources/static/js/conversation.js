@@ -71,8 +71,29 @@ function conversation() {
         _interimTranscript: '',
         /** True when the user pressed stop or playback paused us — suppresses keep-alive restart. */
         _manualStop: false,
-        /** Live transcript shown while recording. */
+        /** Live transcript shown while recording (Web Speech path only). */
         liveTranscript: '',
+
+        /**
+         * True while a server-side recording (MediaRecorder → upload) is in progress. The Kinyarwanda
+         * and French-OpenAI paths give NO live transcript, so the UI shows an elapsed-time + "tap to
+         * stop" hint instead — otherwise the user only sees the listening ring with no confirmation.
+         */
+        serverRecording: false,
+        /** Seconds elapsed in the current server recording — shown in the recording hint. */
+        recordingSeconds: 0,
+        /** setInterval handle ticking recordingSeconds every second. */
+        _recordingTimer: null,
+
+        /** Web Audio plumbing for the live mic-level meter that animates the listening ring. */
+        _micAudioCtx: null,
+        _micAnalyser: null,
+        _micRafId: null,
+        /** 0..1 live microphone level (RMS), bound by the listening ring scale. */
+        micLevel: 0,
+
+        /** True while waiting on a slow (cold-starting) MMS server — drives the "server waking" banner. */
+        warmingUp: false,
 
         // ── lifecycle ──────────────────────────────────────────────────────
 
@@ -133,8 +154,12 @@ function conversation() {
          * Stops any active recording before switching, then persists the choice.
          */
         toggleMode() {
-            if (this.recording) {
+            // Tear down whichever capture is active: Web Speech (_cancelRecognition) AND the server
+            // MediaRecorder path (_discardOpenAiRecording, which also stops the timer + mic meter).
+            // Both are no-ops when their target is inactive, so calling both is safe.
+            if (this.recording || this._mediaRecorder) {
                 this._cancelRecognition();
+                this._discardOpenAiRecording();
             }
             // Tear down any in-flight stream so its bubble doesn't keep mutating the
             // now-hidden layout, and reset the progress bar.
@@ -343,8 +368,7 @@ function conversation() {
          */
         async _startServerRecording(lang, endpoint) {
             if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-                this.errorMessage = this._sttErrorMessage('audio-capture');
-                setTimeout(() => { this.errorMessage = null; }, 5000);
+                this._flashError(this._sttErrorMessage('audio-capture'));
                 return;
             }
             try {
@@ -357,6 +381,9 @@ function conversation() {
                 this._mediaStream = stream;
                 this._audioChunks = [];
 
+                // Let the browser pick a container it can actually produce. iOS Safari only
+                // supports audio/mp4 (AAC) — NOT audio/webm — so we must not force a mimeType.
+                // The chosen type is read back from recorder.mimeType when building the upload.
                 const recorder = new MediaRecorder(stream);
                 recorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
@@ -367,10 +394,12 @@ function conversation() {
                 recorder.start();
                 this.recording  = true;
                 this.activeLang = lang;
+                // Server STT gives no live transcript, so show an elapsed-time + "tap to stop" hint
+                // and animate the listening ring from the live mic level — the only "we hear you" cue.
+                this._startRecordingFeedback(stream);
             } catch (_) {
                 this._releaseStream();
-                this.errorMessage = this._sttErrorMessage('not-allowed');
-                setTimeout(() => { this.errorMessage = null; }, 5000);
+                this._flashError(this._sttErrorMessage('not-allowed'));
             }
         },
 
@@ -381,6 +410,7 @@ function conversation() {
             }
             this.recording  = false;
             this.activeLang = null;
+            this._stopRecordingFeedback();
         },
 
         /** Cancels the recorder and drops any captured audio without uploading. */
@@ -394,7 +424,83 @@ function conversation() {
             this._mediaRecorder = null;
             this._audioChunks = [];
             this.recording = false;
+            this._stopRecordingFeedback();
             this._releaseStream();
+        },
+
+        // ── recording feedback (server STT path: elapsed timer + mic-level meter) ──
+
+        /** Begin the elapsed-second counter and live mic meter for a server recording. */
+        _startRecordingFeedback(stream) {
+            this.serverRecording = true;
+            this.recordingSeconds = 0;
+            if (this._recordingTimer) clearInterval(this._recordingTimer);
+            this._recordingTimer = setInterval(() => { this.recordingSeconds++; }, 1000);
+            this._startMicMeter(stream);
+        },
+
+        /** Stop the counter + meter and reset the recording-feedback state. */
+        _stopRecordingFeedback() {
+            if (this._recordingTimer) {
+                clearInterval(this._recordingTimer);
+                this._recordingTimer = null;
+            }
+            this.serverRecording = false;
+            this.recordingSeconds = 0;
+            this._stopMicMeter();
+        },
+
+        /**
+         * Drive {@link micLevel} (0..1) from the live microphone RMS via a Web Audio AnalyserNode, so the
+         * listening ring pulses with the user's voice. Best-effort: any failure (no AudioContext, blocked
+         * autoplay policy) silently no-ops — the timer + hint still provide feedback.
+         */
+        _startMicMeter(stream) {
+            try {
+                // Respect reduced-motion: skip the voice-reactive pulse, leave the static ring as the cue.
+                if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx || !stream) return;
+                const ctx = new Ctx();
+                // Some browsers start the context suspended until resumed inside a gesture (we are in
+                // the mic-press gesture here). Best-effort — a rejection just leaves the meter idle.
+                if (ctx.state === 'suspended' && ctx.resume) { ctx.resume().catch(() => {}); }
+                const source = ctx.createMediaStreamSource(stream);
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 512;
+                source.connect(analyser);
+                this._micAudioCtx = ctx;
+                this._micAnalyser = analyser;
+                const buf = new Uint8Array(analyser.fftSize);
+                const tick = () => {
+                    if (!this._micAnalyser) return;
+                    analyser.getByteTimeDomainData(buf);
+                    let sum = 0;
+                    for (let i = 0; i < buf.length; i++) {
+                        const v = (buf[i] - 128) / 128;
+                        sum += v * v;
+                    }
+                    const rms = Math.sqrt(sum / buf.length);
+                    // Scale up (speech RMS is small) and clamp to 0..1 for a lively but bounded ring.
+                    this.micLevel = Math.min(1, rms * 4);
+                    this._micRafId = requestAnimationFrame(tick);
+                };
+                tick();
+            } catch (_) { /* meter is optional — ignore */ }
+        },
+
+        /** Tear down the mic meter and reset the level. */
+        _stopMicMeter() {
+            if (this._micRafId) {
+                cancelAnimationFrame(this._micRafId);
+                this._micRafId = null;
+            }
+            this._micAnalyser = null;
+            if (this._micAudioCtx) {
+                try { this._micAudioCtx.close(); } catch (_) { /* ignored */ }
+                this._micAudioCtx = null;
+            }
+            this.micLevel = 0;
         },
 
         /** Stops all microphone tracks to turn off the recording indicator. */
@@ -414,27 +520,41 @@ function conversation() {
          */
         async _uploadServerAudio(lang, endpoint) {
             this._releaseStream();
+            this._stopRecordingFeedback();
             const chunks = this._audioChunks || [];
             this._audioChunks = [];
             this._mediaRecorder = null;
-            if (chunks.length === 0) return;
+            // Nothing captured (mic produced no data) — tell the user instead of failing silently.
+            if (chunks.length === 0) {
+                this._flashError(this._noSpeechMessage());
+                return;
+            }
 
-            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const { blob, ext } = this._recordedBlob(chunks);
             this.translating = true;
             this.processing  = true;   // show the progress bar across STT → translation
+            // The MMS server is scale-to-zero: a request after idle can take 30-60 s to wake (model
+            // reload). After a short delay, tell the user we're waiting so it doesn't look frozen.
+            const warmupTimer = setTimeout(() => { this.warmingUp = true; }, 6000);
             try {
                 const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
                 const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
 
                 const formData = new FormData();
-                formData.append('audio', blob, 'speech.webm');
+                formData.append('audio', blob, `speech.${ext}`);
 
                 const resp = await fetch(endpoint, {
                     method: 'POST',
                     headers: { [csrfHeader]: csrfToken },
                     body: formData,
                 });
-                if (!resp.ok) throw new Error('stt-failed');
+                // A non-OK response is an STT failure (bad audio, model error), not a connectivity
+                // problem — tag it so the catch shows the STT message rather than "network".
+                if (!resp.ok) {
+                    const err = new Error('stt-failed');
+                    err.sttHttp = true;
+                    throw err;
+                }
 
                 const data = await resp.json();
                 const text = (data.corrected || data.raw || '').trim();
@@ -443,15 +563,58 @@ function conversation() {
                     // until `done`/`error`; only clear it here if we have nothing to submit.
                     this._submitTranscript(text, lang);
                 } else {
+                    // STT succeeded but heard nothing (silence / too far from mic). Never leave the
+                    // user staring at a screen that did nothing — surface a clear, actionable message.
                     this.processing = false;
+                    this._flashError(this._noSpeechMessage());
                 }
-            } catch (_) {
+            } catch (e) {
                 this.processing = false;
-                this.errorMessage = this._sttErrorMessage('network');
-                setTimeout(() => { this.errorMessage = null; }, 5000);
+                this._flashError(e && e.sttHttp
+                    ? this._sttErrorMessage('stt-failed')
+                    : this._sttErrorMessage('network'));
             } finally {
                 this.translating = false;
+                clearTimeout(warmupTimer);
+                this.warmingUp = false;
             }
+        },
+
+        /**
+         * Builds the upload Blob from the recorded chunks, preserving the browser's actual container.
+         * iOS Safari records audio/mp4, Chrome/Firefox audio/webm; mislabelling the part trips the
+         * server's MIME allowlist and the wrong extension can break decoding. Falls back to webm.
+         *
+         * @param {Blob[]} chunks - the recorded media chunks
+         * @returns {{blob: Blob, ext: string}} the upload blob and its filename extension
+         */
+        _recordedBlob(chunks) {
+            const recordedType = (chunks[0] && chunks[0].type) || 'audio/webm';
+            const ext = recordedType.includes('mp4') ? 'mp4'
+                : recordedType.includes('ogg') ? 'ogg'
+                : recordedType.includes('wav') ? 'wav'
+                : 'webm';
+            return { blob: new Blob(chunks, { type: recordedType }), ext };
+        },
+
+        /** Recording hint text with the elapsed seconds substituted (i18n, with a French fallback). */
+        recordingHintText() {
+            const tpl = (window.tuganireMessages && window.tuganireMessages.recordingHint)
+                || 'Enregistrement… {0} s · touchez pour arrêter';
+            return tpl.replace('{0}', this.recordingSeconds);
+        },
+
+        /** The "I heard nothing" message, from i18n, with a sensible fallback. */
+        _noSpeechMessage() {
+            const m = window.tuganireMessages || {};
+            return m.noSpeech || m.sttFailed || m.errorGeneric || '';
+        },
+
+        /** Show a transient error toast (auto-dismiss after 5 s), no-op when the message is empty. */
+        _flashError(message) {
+            if (!message) return;
+            this.errorMessage = message;
+            setTimeout(() => { this.errorMessage = null; }, 5000);
         },
 
         // ── transcript submission ───────────────────────────────────────────
@@ -520,9 +683,13 @@ function conversation() {
             });
             const es = new EventSource(`/api/v1/stream/translate?${params.toString()}`);
             this._eventSource = es;
+            // If no token arrives within a few seconds (a slow dependency waking mid-pipeline), show the
+            // warm-up banner so the stream doesn't look frozen; cleared on the first token / close.
+            this._armStreamWarmup();
 
             // 1. correction token → append to the SOURCE bubble
             es.addEventListener('correction', (e) => {
+                this._clearStreamWarmup();
                 const token = this._eventToken(e);
                 if (token) {
                     // Drop the immediately-shown transcript on the first streamed token, then append the refined one.
@@ -546,10 +713,11 @@ function conversation() {
 
             // 3. translation token → append to the TARGET bubble
             es.addEventListener('translation', (e) => {
+                this._clearStreamWarmup();
                 const token = this._eventToken(e);
                 if (token) {
                     refs.targetText.textContent += token;
-                    this.scrollToBottom();
+                    this.scrollToBottom(refs.listId);
                 }
             });
 
@@ -563,7 +731,7 @@ function conversation() {
                 if (data.audioUrl) {
                     this._attachAudio(refs, data.audioUrl);
                 }
-                this.scrollToBottom();
+                this.scrollToBottom(refs.listId);
             });
 
             // 5. done → close, hide progress bar, ensure controls are present
@@ -571,7 +739,7 @@ function conversation() {
                 this._closeStream();
                 this.processing  = false;
                 this.translating = false;
-                this.scrollToBottom();
+                this.scrollToBottom(refs.listId);
             });
 
             // 6. error (server-sent) → close, hide progress bar, show toast
@@ -602,10 +770,26 @@ function conversation() {
 
         /** Close + null out the active EventSource (idempotent). */
         _closeStream() {
+            this._clearStreamWarmup();
             if (this._eventSource) {
                 try { this._eventSource.close(); } catch (_) { /* ignored */ }
                 this._eventSource = null;
             }
+        },
+
+        /** Arm a timer that shows the warm-up banner if the SSE stream stalls before its first token. */
+        _armStreamWarmup() {
+            this._clearStreamWarmup();
+            this._streamWarmupTimer = setTimeout(() => { this.warmingUp = true; }, 7000);
+        },
+
+        /** Cancel the SSE warm-up timer and hide the banner. */
+        _clearStreamWarmup() {
+            if (this._streamWarmupTimer) {
+                clearTimeout(this._streamWarmupTimer);
+                this._streamWarmupTimer = null;
+            }
+            this.warmingUp = false;
         },
 
         /** Safely JSON.parse an SSE event's `data`; returns null when absent/invalid. */

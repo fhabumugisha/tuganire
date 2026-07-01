@@ -144,6 +144,15 @@ tuganire:
         output-per1k: 0.005
   mms:
     base-url: ${MMS_TTS_URL:http://localhost:8000}
+    # The MMS server is a scale-to-zero Railway service: a request after idle triggers a cold start
+    # (~4 GB model reload, tens of seconds). Short connect (the edge accepts fast) + long read (ride out
+    # the wake). Gateway-5xx retries are declarative on the provider methods (@Retryable); a read timeout
+    # is terminal so a busy server is never piled with a duplicate inference.
+    connect-timeout: ${MMS_CONNECT_TIMEOUT:10s}
+    read-timeout: ${MMS_READ_TIMEOUT:90s}
+    # Optional shared secret between this backend and the MMS server. Blank = no auth (default). When set,
+    # the backend sends it as X-MMS-Secret and the Python server must require the same value.
+    shared-secret: ${MMS_SHARED_SECRET:}
   cache:
     translation-ttl-days: 30
   rate-limit:
