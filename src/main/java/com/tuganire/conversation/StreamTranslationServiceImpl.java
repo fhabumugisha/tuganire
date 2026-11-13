@@ -1,26 +1,33 @@
 package com.tuganire.conversation;
 
 import com.tuganire.admin.LlmUsageTracker;
+import com.tuganire.config.LlmConfig;
 import com.tuganire.golden.GoldenDictionaryService;
 import com.tuganire.llm.LlmSettings;
 import com.tuganire.llm.prompt.TranslationPromptBuilder;
 import com.tuganire.postprocessor.KinyarwandaPostProcessor;
+import com.tuganire.shared.util.PipelineMetrics;
 import com.tuganire.translation.TranslationResponse;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -29,19 +36,25 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 /**
- * Default {@link StreamTranslationService}: runs the correction → translation pipeline on a per-request virtual thread
+ * Default {@link StreamTranslationService}: runs the correction + translation pipeline on a per-request virtual thread
  * and emits SSE events as tokens arrive.
  *
  * <p>
- * Reuses existing assets: the French/Kinyarwanda correction system prompts (mirrored here as constants so a streaming
- * {@link ChatClient} can use them), {@link TranslationPromptBuilder} for the translation prompt,
- * {@link GoldenDictionaryService} for the instant golden short-circuit, and {@link KinyarwandaPostProcessor} for the
- * final RW cleanup. Provider routing (OpenAI vs Anthropic) follows the same rule as the non-streaming impls: the
- * provider that owns the active model in {@link LlmSettings}.
+ * Correction and translation are produced by a <b>single</b> streamed LLM call (system prompt from
+ * {@link TranslationPromptBuilder#buildCorrectAndTranslateSystemPrompt}): the model writes the corrected source, a
+ * separator line, then the translation, and {@link CorrectionTranslationSplitter} routes the tokens to the
+ * {@code correction} / {@code translation} events. This saves a full LLM round-trip compared with two chained calls.
  *
  * <p>
- * Streaming is consumed synchronously: {@code chatClient.prompt().user(...).stream().content()} returns a reactive
- * {@code Flux<String>} which is drained with {@code toIterable()} on the virtual thread, so blocking is cheap.
+ * The golden dictionary is checked on the raw transcript (instant answer, no LLM call) and again on the corrected
+ * source (the validated translation then replaces the LLM one). {@link KinyarwandaPostProcessor} cleans the final RW
+ * output. Provider routing (OpenAI vs Anthropic) follows the active model in {@link LlmSettings}. Every stage is timed
+ * via {@link PipelineMetrics}, and real token usage (read from the final streamed chunk) goes to
+ * {@link LlmUsageTracker}.
+ *
+ * <p>
+ * Streaming is consumed synchronously: {@code stream().chatResponse()} returns a reactive {@code Flux} which is drained
+ * with {@code toIterable()} on the virtual thread, so blocking is cheap.
  */
 @Service
 @Slf4j
@@ -49,8 +62,7 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
 
     static final String PROVIDER_ANTHROPIC = "anthropic";
     static final String PROVIDER_OPENAI = "openai";
-    static final String FEATURE_CORRECTION = "stream-correction";
-    static final String FEATURE_TRANSLATION = "stream-translation";
+    static final String FEATURE_CORRECT_TRANSLATE = "stream-correct-translate";
 
     private static final double ANTHROPIC_TEMPERATURE = 0.1;
     private static final int MAX_TOKENS = 1024;
@@ -68,32 +80,6 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
 
     private static final String AUDIO_URL_TEMPLATE = "/api/v1/audio/speak.mp3?lang=%s&text=%s";
 
-    /** Mirrors {@code FrenchCorrectionServiceImpl#SYSTEM_PROMPT} so streaming uses the same instructions. */
-    private static final String FR_CORRECTION_PROMPT = """
-            Tu es un correcteur de français. On te donne la transcription brute d'une phrase \
-            dite à l'oral, parfois par une personne dont le français n'est pas la langue maternelle. \
-            Réécris-la en français correct et naturel, en respectant fidèlement le sens et l'intention. \
-            Corrige la grammaire, les accords, la conjugaison, les accents et les mots mal transcrits. \
-            Applique l'orthographe et la ponctuation correctes : mets une majuscule au début de la phrase \
-            et aux noms propres, et termine par la ponctuation appropriée (point, point d'interrogation \
-            pour une question, point d'exclamation), avec les espaces typographiques françaises. \
-            Exemple : « on va manger quoi » devient « On va manger quoi ? ». \
-            N'ajoute aucune information, ne réponds pas à la phrase, ne la traduis pas. \
-            Renvoie UNIQUEMENT la phrase corrigée, sans guillemets ni commentaire.""";
-
-    /** Single source of the streamed Kinyarwanda correction instructions (the only LLM RW correction in the app). */
-    private static final String RW_CORRECTION_PROMPT = """
-            Tu reçois la transcription brute d'une phrase dite en KINYARWANDA, produite par un modèle de \
-            reconnaissance vocale. Elle est en minuscules, sans ponctuation, et peut contenir de petites erreurs \
-            d'accord ou d'orthographe. Réécris-la en kinyarwanda correct :
-            - ajoute la ponctuation (points, virgules, point d'interrogation pour une question) ;
-            - mets une majuscule au début de la phrase et aux noms propres ;
-            - le mot « Imana » (Dieu) s'écrit TOUJOURS avec une majuscule, où qu'il apparaisse ;
-            - corrige uniquement les accords et l'orthographe ÉVIDENTS.
-            Préserve FIDÈLEMENT les mots et le sens : ne change pas le vocabulaire, n'ajoute ni ne supprime \
-            d'information, ne réponds pas à la phrase, ne la traduis pas. \
-            Renvoie UNIQUEMENT la phrase corrigée, sans guillemets ni commentaire.""";
-
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     private final OpenAiChatModel openAiModel;
@@ -103,11 +89,15 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
     private final GoldenDictionaryService goldenDictionaryService;
     private final KinyarwandaPostProcessor postProcessor;
     private final LlmUsageTracker usageTracker;
+    private final MeterRegistry meterRegistry;
+    private final List<String> reasoningModels;
+    private final @Nullable String reasoningEffort;
 
     StreamTranslationServiceImpl(@Qualifier("openAiChatModel") OpenAiChatModel openAiModel,
             @Qualifier("anthropicChatModel") AnthropicChatModel anthropicModel, LlmSettings llmSettings,
             TranslationPromptBuilder promptBuilder, GoldenDictionaryService goldenDictionaryService,
-            KinyarwandaPostProcessor postProcessor, LlmUsageTracker usageTracker) {
+            KinyarwandaPostProcessor postProcessor, LlmUsageTracker usageTracker, MeterRegistry meterRegistry,
+            LlmConfig llmConfig) {
         this.openAiModel = openAiModel;
         this.anthropicModel = anthropicModel;
         this.llmSettings = llmSettings;
@@ -115,6 +105,9 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
         this.goldenDictionaryService = goldenDictionaryService;
         this.postProcessor = postProcessor;
         this.usageTracker = usageTracker;
+        this.meterRegistry = meterRegistry;
+        this.reasoningModels = List.copyOf(llmConfig.openai().temperatureLockedModels());
+        this.reasoningEffort = llmConfig.openai().reasoningEffort();
     }
 
     @Override
@@ -124,58 +117,130 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
 
     /** Runs the full pipeline on a virtual thread; completes the emitter (or completes-with-error) before returning. */
     private void runPipeline(SseEmitter emitter, StreamTranslationRequest request) {
+        long start = System.nanoTime();
+        String lang = request.sourceLang();
         try {
             Locale srcLocale = Locale.forLanguageTag(request.sourceLang());
             Locale tgtLocale = Locale.forLanguageTag(request.targetLang());
+            String rawSource = request.text();
 
-            String correctedSource = streamCorrection(emitter, request.text(), request.sourceLang());
-            send(emitter, EVENT_CORRECTION_DONE, new DoneText(correctedSource));
+            Optional<TranslationResponse> golden = goldenDictionaryService.lookup(rawSource, srcLocale, tgtLocale);
+            if (golden.isPresent()) {
+                // Exact golden hit on the transcript: answer instantly, no LLM call at all.
+                log.debug("Golden short-circuit on raw transcript");
+                send(emitter, EVENT_CORRECTION_DONE, new DoneText(finishSource(rawSource, lang)));
+                finish(emitter, request.targetLang(), golden.get().translatedText());
+                PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_STREAM_TOTAL, start,
+                        PipelineMetrics.TAG_LANG, lang, PipelineMetrics.TAG_OUTCOME, PipelineMetrics.OUTCOME_GOLDEN);
+                return;
+            }
 
-            String finalTranslation = streamTranslation(emitter, correctedSource, srcLocale, tgtLocale,
-                    request.targetLang());
-            String audioUrl = buildAudioUrl(request.targetLang(), finalTranslation);
-            send(emitter, EVENT_TRANSLATION_DONE, new TranslationDone(finalTranslation, audioUrl));
-
-            send(emitter, EVENT_DONE, new Empty());
-            emitter.complete();
+            CorrectionTranslationSplitter result = streamCorrectAndTranslate(emitter, rawSource, srcLocale, tgtLocale);
+            String corrected = result.isSplit() ? finishSource(result.correction(), lang) : "";
+            String correctedSource = StringUtils.hasText(corrected) ? corrected : rawSource;
+            if (!result.isSplit()) {
+                // Model ignored the two-part format: treat everything it wrote as the translation.
+                log.warn("Merged correction+translation output had no separator; using raw source as corrected text");
+                send(emitter, EVENT_CORRECTION_DONE, new DoneText(correctedSource));
+            }
+            String rawTranslation = result.isSplit() ? result.translation() : result.correction();
+            String finalTranslation = translateFinal(correctedSource, rawTranslation, srcLocale, tgtLocale);
+            finish(emitter, request.targetLang(), finalTranslation);
+            PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_STREAM_TOTAL, start, PipelineMetrics.TAG_LANG,
+                    lang, PipelineMetrics.TAG_OUTCOME, PipelineMetrics.OUTCOME_SUCCESS);
         } catch (Exception ex) {
             log.warn("Stream translation pipeline failed: {}", ex.getMessage(), ex);
+            PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_STREAM_TOTAL, start, PipelineMetrics.TAG_LANG,
+                    lang, PipelineMetrics.TAG_OUTCOME, PipelineMetrics.OUTCOME_ERROR);
             tryEmitError(emitter, ex);
         }
     }
 
+    /**
+     * Final translation: a golden-dictionary hit on the corrected source wins over the LLM output; otherwise the LLM
+     * output, run through the Kinyarwanda post-processor when the target is RW.
+     */
+    private String translateFinal(String correctedSource, String rawTranslation, Locale srcLocale, Locale tgtLocale) {
+        Optional<TranslationResponse> golden = goldenDictionaryService.lookup(correctedSource, srcLocale, tgtLocale);
+        if (golden.isPresent()) {
+            return golden.get().translatedText();
+        }
+        if (LANG_RW.equalsIgnoreCase(tgtLocale.getLanguage())) {
+            return postProcessor.process(rawTranslation, correctedSource, srcLocale, tgtLocale).text();
+        }
+        return rawTranslation;
+    }
+
+    /** Emits {@code translation-done} (with the lazy TTS URL) then {@code done}, and completes the emitter. */
+    private void finish(SseEmitter emitter, String targetLang, String translation) {
+        send(emitter, EVENT_TRANSLATION_DONE, new TranslationDone(translation, buildAudioUrl(targetLang, translation)));
+        send(emitter, EVENT_DONE, new Empty());
+        emitter.complete();
+    }
+
+    /** Kinyarwanda source text gets the deterministic {@link #tidy(String)} pass; French is returned trimmed. */
+    private static String finishSource(String text, String lang) {
+        return LANG_RW.equalsIgnoreCase(lang) ? tidy(text) : text == null ? "" : text.trim();
+    }
+
     // -------------------------------------------------------------------------
-    // Correction (source cleanup) — streamed token by token
+    // Merged correction + translation — one streamed LLM call
     // -------------------------------------------------------------------------
 
     /**
-     * Streams the cleaned SOURCE text token by token via {@code correction} events and returns the full cleaned text.
-     * Kinyarwanda output is additionally run through the deterministic {@link #tidy(String)} pass before being returned
-     * (the streamed tokens are the raw model output; the {@code correction-done} text is the tidied final).
+     * Streams the merged call: correction tokens become {@code correction} events, {@code correction-done} is sent as
+     * soon as the separator arrives (so the source bubble is final before the translation starts), and translation
+     * tokens become {@code translation} events. Returns the splitter holding both full texts.
      */
-    private String streamCorrection(SseEmitter emitter, String text, String lang) {
-        boolean rw = LANG_RW.equalsIgnoreCase(lang);
-        String systemPrompt = rw ? RW_CORRECTION_PROMPT : FR_CORRECTION_PROMPT;
-        StringBuilder accumulated = new StringBuilder();
-        try {
-            String activeModel = llmSettings.getModel();
-            ChatClient client = buildClient(systemPrompt, activeModel);
-            consumeStream(client, activeModel, text, FEATURE_CORRECTION, chunk -> {
-                accumulated.append(chunk);
-                send(emitter, EVENT_CORRECTION, new Token(chunk));
-            });
-        } catch (Exception ex) {
-            // Correction is best-effort: fall back to the raw source so the pipeline can still translate.
-            log.warn("Stream correction failed ({}): {}", lang, ex.getMessage());
-            if (accumulated.length() == 0) {
-                accumulated.append(text);
+    private CorrectionTranslationSplitter streamCorrectAndTranslate(SseEmitter emitter, String rawSource,
+            Locale srcLocale, Locale tgtLocale) {
+        String lang = srcLocale.getLanguage();
+        CorrectionTranslationSplitter splitter = new CorrectionTranslationSplitter(
+                TranslationPromptBuilder.CORRECTION_SEPARATOR,
+                token -> send(emitter, EVENT_CORRECTION, new Token(token)),
+                token -> send(emitter, EVENT_TRANSLATION, new Token(token)),
+                correction -> send(emitter, EVENT_CORRECTION_DONE, new DoneText(finishSource(correction, lang))));
+
+        String modelId = llmSettings.getModel();
+        String provider = resolveProvider(modelId);
+        ChatClient client = buildClient(promptBuilder.buildCorrectAndTranslateSystemPrompt(srcLocale, tgtLocale),
+                provider);
+        ChatOptions.Builder<?> options = buildOptions(provider, modelId);
+
+        long start = System.nanoTime();
+        boolean firstToken = true;
+        Usage usage = null;
+        for (ChatResponse response : client.prompt().user(rawSource).options(options).stream().chatResponse()
+                .toIterable()) {
+            Usage chunkUsage = response.getMetadata() != null ? response.getMetadata().getUsage() : null;
+            if (chunkUsage != null && chunkUsage.getTotalTokens() != null && chunkUsage.getTotalTokens() > 0) {
+                usage = chunkUsage;
             }
+            String chunk = response.getResult() != null && response.getResult().getOutput() != null
+                    ? response.getResult().getOutput().getText()
+                    : null;
+            if (chunk == null || chunk.isEmpty()) {
+                continue;
+            }
+            if (firstToken) {
+                PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_LLM_FIRST_TOKEN, start,
+                        PipelineMetrics.TAG_PROVIDER, provider, PipelineMetrics.TAG_MODEL, modelId);
+                firstToken = false;
+            }
+            splitter.accept(chunk);
         }
-        String cleaned = accumulated.toString().trim();
-        if (!StringUtils.hasText(cleaned)) {
-            cleaned = text;
-        }
-        return rw ? tidy(cleaned) : cleaned;
+        splitter.finish();
+        PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_LLM_TOTAL, start, PipelineMetrics.TAG_PROVIDER,
+                provider, PipelineMetrics.TAG_MODEL, modelId);
+        recordUsage(provider, modelId, usage);
+        return splitter;
+    }
+
+    /** Records real token usage from the final streamed chunk; zero when the provider did not report it. */
+    private void recordUsage(String provider, String modelId, @Nullable Usage usage) {
+        int promptTokens = usage != null && usage.getPromptTokens() != null ? usage.getPromptTokens() : 0;
+        int completionTokens = usage != null && usage.getCompletionTokens() != null ? usage.getCompletionTokens() : 0;
+        usageTracker.track(provider, modelId, FEATURE_CORRECT_TRANSLATE, promptTokens, completionTokens);
     }
 
     /**
@@ -198,49 +263,11 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
     }
 
     // -------------------------------------------------------------------------
-    // Translation — golden short-circuit, else streamed token by token
+    // Spring AI plumbing
     // -------------------------------------------------------------------------
 
-    /**
-     * Translates {@code correctedSource}. On an exact golden-dictionary hit, returns the golden text immediately with
-     * no {@code translation} token events. Otherwise streams the LLM translation token by token, then applies the
-     * Kinyarwanda post-processor (when the target is RW) to the accumulated text and returns the post-processed result.
-     */
-    private String streamTranslation(SseEmitter emitter, String correctedSource, Locale srcLocale, Locale tgtLocale,
-            String targetLang) {
-        Optional<TranslationResponse> golden = goldenDictionaryService.lookup(correctedSource, srcLocale, tgtLocale);
-        if (golden.isPresent()) {
-            log.debug("Golden short-circuit for stream translation");
-            return golden.get().translatedText();
-        }
-
-        StringBuilder accumulated = new StringBuilder();
-        String userPrompt = promptBuilder.buildUserPrompt(correctedSource, srcLocale, tgtLocale);
-        String activeModel = llmSettings.getModel();
-        ChatClient client = buildClient(promptBuilder.buildSystemPrompt(), activeModel);
-        consumeStream(client, activeModel, userPrompt, FEATURE_TRANSLATION, chunk -> {
-            accumulated.append(chunk);
-            send(emitter, EVENT_TRANSLATION, new Token(chunk));
-        });
-
-        String raw = accumulated.toString().trim();
-        if (LANG_RW.equalsIgnoreCase(targetLang)) {
-            return postProcessor.process(raw, correctedSource, srcLocale, tgtLocale).text();
-        }
-        return raw;
-    }
-
-    // -------------------------------------------------------------------------
-    // Spring AI streaming plumbing
-    // -------------------------------------------------------------------------
-
-    /**
-     * Builds a streaming {@link ChatClient} for the given system prompt, routed to the provider that owns
-     * {@code modelId}. OpenAI keeps the server-side default temperature (GPT-5.x rejects a custom value); Anthropic
-     * gets a low temperature and an explicit {@code maxTokens}.
-     */
-    private ChatClient buildClient(String systemPrompt, String modelId) {
-        String provider = resolveProvider(modelId);
+    /** Builds a streaming {@link ChatClient} for the given system prompt on the given provider's model. */
+    private ChatClient buildClient(String systemPrompt, String provider) {
         if (PROVIDER_ANTHROPIC.equals(provider)) {
             return ChatClient.builder(anthropicModel).defaultSystem(systemPrompt).build();
         }
@@ -248,31 +275,20 @@ class StreamTranslationServiceImpl implements StreamTranslationService {
     }
 
     /**
-     * Drives a Spring AI streaming call synchronously: builds per-call options, drains the reactive
-     * {@code Flux<String>} via {@code toIterable()} on the calling (virtual) thread, and hands every non-empty chunk to
-     * {@code onChunk}.
+     * Anthropic: low temperature + explicit maxTokens. OpenAI: no temperature (GPT-5.x rejects it), usage reported in
+     * the final chunk ({@code stream_options.include_usage}), and the configured {@code reasoning_effort} for the
+     * reasoning models listed in {@code tuganire.llm.openai.temperature-locked-models}.
      */
-    private void consumeStream(ChatClient client, String modelId, String userPrompt, String feature,
-            Consumer<String> onChunk) {
-        String provider = resolveProvider(modelId);
-        ChatOptions.Builder<?> options = buildOptions(provider, modelId);
-        for (String chunk : client.prompt().user(userPrompt).options(options).stream().content().toIterable()) {
-            if (chunk != null && !chunk.isEmpty()) {
-                onChunk.accept(chunk);
-            }
-        }
-        // Token usage is not exposed on the streamed Flux<String>; record a best-effort zero-token event so the
-        // feature still appears in admin analytics (tracker never throws).
-        usageTracker.track(provider, modelId, feature, 0, 0);
-    }
-
-    /** OpenAI omits temperature (GPT-5.x rejects it); Anthropic gets a low temperature + explicit maxTokens. */
     private ChatOptions.Builder<?> buildOptions(String provider, String modelId) {
         if (PROVIDER_ANTHROPIC.equals(provider)) {
             return AnthropicChatOptions.builder().model(modelId).temperature(ANTHROPIC_TEMPERATURE)
                     .maxTokens(MAX_TOKENS);
         }
-        return ChatOptions.builder().model(modelId);
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder().model(modelId).streamUsage(true);
+        if (StringUtils.hasText(reasoningEffort) && reasoningModels.contains(modelId)) {
+            options.reasoningEffort(reasoningEffort);
+        }
+        return options;
     }
 
     /** Resolves the owning provider for a model id from the configured selectable models; defaults to OpenAI. */

@@ -19,11 +19,14 @@ import org.springframework.web.multipart.MultipartFile;
  * Server-side speech-to-text endpoints. The browser records audio with {@code MediaRecorder} and uploads it here.
  *
  * <ul>
- * <li>{@code /transcribe-fr} — French: Whisper transcription → {@link FrenchCorrectionService} cleanup.
+ * <li>{@code /transcribe-fr} — French: Whisper transcription, returned as-is.
  * <li>{@code /transcribe-rw} — Kinyarwanda: MMS-ASR transcription → {@link KinyarwandaCorrectionService} deterministic
- * tidy (capitalisation + terminal punctuation). The LLM correction is performed once, downstream, by the streaming
- * translation pipeline — so no blocking LLM round-trip happens here.
+ * tidy (capitalisation + terminal punctuation).
  * </ul>
+ *
+ * <p>
+ * Neither endpoint calls an LLM: the correction is performed once, downstream, by the streaming translation pipeline,
+ * in the same LLM call as the translation — so no blocking LLM round-trip delays the conversation here.
  *
  * <p>
  * Mounted under {@code /api/v1/**} (see {@code SecurityConfig}).
@@ -35,7 +38,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "STT", description = "Server-side speech-to-text (French Whisper, Kinyarwanda MMS-ASR + deterministic tidy)")
 public class SttController {
 
-    /** BCP-47 tag for French — uses Whisper + LLM correction. */
+    /** BCP-47 tag for French — routed to Whisper. */
     private static final Locale FRENCH = Locale.forLanguageTag("fr");
 
     /** BCP-47 tag for Kinyarwanda — routed to the MMS-ASR provider. */
@@ -50,26 +53,24 @@ public class SttController {
             "audio/wav", "audio/mp4", "audio/x-m4a");
 
     private final SttService sttService;
-    private final FrenchCorrectionService correctionService;
     private final KinyarwandaCorrectionService kinyarwandaCorrectionService;
 
     /**
-     * Transcribes an uploaded French audio clip with Whisper, then returns both the raw transcript and an LLM-corrected
-     * version.
+     * Transcribes an uploaded French audio clip with Whisper. The correction happens downstream in the streaming
+     * pipeline, so {@code corrected} is the trimmed raw transcript.
      *
      * @param audio
      *            the recorded audio (WebM/Opus from {@code MediaRecorder}, or any format Whisper accepts); non-empty
      * @return 200 with {@link TranscriptionResponse}
      */
     @PostMapping(value = "/transcribe-fr", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Transcribe French audio", description = "Whisper transcription + LLM correction of French")
+    @Operation(summary = "Transcribe French audio", description = "Whisper transcription (correction is streamed later)")
     public ResponseEntity<TranscriptionResponse> transcribeFrench(@RequestParam("audio") MultipartFile audio) {
         byte[] bytes = readAudio(audio, "transcribe-fr");
 
         String raw = sttService.transcribe(bytes, FRENCH);
-        String corrected = correctionService.correct(raw);
 
-        return ResponseEntity.ok(new TranscriptionResponse(raw, corrected));
+        return ResponseEntity.ok(new TranscriptionResponse(raw, raw == null ? null : raw.trim()));
     }
 
     /**
@@ -136,7 +137,7 @@ public class SttController {
      * @param raw
      *            the raw Whisper transcript
      * @param corrected
-     *            the LLM-corrected French (equal to {@code raw} if correction was unavailable)
+     *            the display text: trimmed raw transcript (FR) or deterministically tidied transcript (RW)
      */
     public record TranscriptionResponse(String raw, String corrected) {
     }

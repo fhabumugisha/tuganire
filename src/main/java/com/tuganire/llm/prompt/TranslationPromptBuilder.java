@@ -108,11 +108,74 @@ public class TranslationPromptBuilder {
     // -------------------------------------------------------------------------
 
     /**
+     * Separator line the merged correction + translation call emits between the corrected source and the translation.
+     * Chosen to never occur in French or Kinyarwanda text; the streaming parser splits on it.
+     */
+    public static final String CORRECTION_SEPARATOR = "§§§";
+
+    private static final String TRANSLATION_ONLY_FORMAT = """
+
+            INSTRUCTIONS DE FORMAT:
+            - Retourne UNIQUEMENT la traduction, sans explication ni commentaire.
+            - Ne mets pas de guillemets autour de la traduction.
+            - Si tu n'es pas certain d'un mot, utilise l'emprunt plutôt qu'inventer.
+            """;
+
+    /**
      * Builds the complete system prompt encoding all 10 linguistic rules and at least 8 few-shot examples.
      *
      * @return the system prompt string
      */
     public String buildSystemPrompt() {
+        return rulesAndExamples() + TRANSLATION_ONLY_FORMAT;
+    }
+
+    /**
+     * Builds the system prompt for the single streamed call that both cleans up a raw speech transcript and translates
+     * it. The model first writes the corrected source sentence, then a line containing only
+     * {@link #CORRECTION_SEPARATOR}, then the translation. Merging the two steps saves one full LLM round-trip.
+     *
+     * @param src
+     *            the source language locale (language of the raw transcript)
+     * @param tgt
+     *            the target language locale
+     * @return the system prompt string
+     */
+    public String buildCorrectAndTranslateSystemPrompt(Locale src, Locale tgt) {
+        String srcName = localeName(src);
+        String tgtName = localeName(tgt);
+        String correctionRules = "rw".equals(src.getLanguage()) ? """
+                - ajoute la ponctuation (points, virgules, point d'interrogation pour une question) ;
+                - mets une majuscule au début de la phrase et aux noms propres ;
+                - le mot « Imana » (Dieu) s'écrit TOUJOURS avec une majuscule ;
+                - corrige uniquement les accords et l'orthographe ÉVIDENTS, sans changer le vocabulaire.
+                """ : """
+                - corrige la grammaire, les accords, la conjugaison, les accents et les mots mal transcrits ;
+                - mets une majuscule au début de la phrase et aux noms propres, et termine par la ponctuation \
+                appropriée (point, point d'interrogation pour une question, point d'exclamation) ;
+                - exemple : « on va manger quoi » devient « On va manger quoi ? ».
+                """;
+        return rulesAndExamples() + """
+
+                TÂCHE EN DEUX ÉTAPES:
+                Le message de l'utilisateur est la transcription BRUTE d'une phrase dite à l'oral en %s, produite \
+                par une reconnaissance vocale (parfois par une personne dont ce n'est pas la langue maternelle).
+                1. Réécris-la en %s correct, en respectant fidèlement le sens et l'intention :
+                %s\
+                   N'ajoute aucune information et ne réponds pas à la phrase.
+                2. Traduis la phrase corrigée en %s en suivant les règles ci-dessus.
+
+                INSTRUCTIONS DE FORMAT (strictes):
+                - Ligne 1 : UNIQUEMENT la phrase corrigée en %s.
+                - Ligne 2 : UNIQUEMENT %s
+                - Ligne 3 : UNIQUEMENT la traduction en %s.
+                - Aucun guillemet, aucune explication, aucun commentaire.
+                - Si tu n'es pas certain d'un mot, utilise l'emprunt plutôt qu'inventer.
+                """.formatted(srcName, srcName, correctionRules, tgtName, srcName, CORRECTION_SEPARATOR, tgtName);
+    }
+
+    /** The 10 linguistic rules plus the validated few-shot examples, shared by every translation system prompt. */
+    private static String rulesAndExamples() {
         return """
                 Tu es un traducteur expert en français ↔ kinyarwanda, conçu pour des conversations \
                 courantes de voyage au Rwanda (transport, marché, restaurant, santé, social).
@@ -127,13 +190,7 @@ public class TranslationPromptBuilder {
 
                         """ + EXAMPLE_01 + "\n" + EXAMPLE_02 + "\n" + EXAMPLE_03 + "\n" + EXAMPLE_04 + "\n" + EXAMPLE_05
                 + "\n" + EXAMPLE_06 + "\n" + EXAMPLE_07 + "\n" + EXAMPLE_08 + "\n" + EXAMPLE_09 + "\n" + EXAMPLE_10
-                + "\n" + EXAMPLE_11 + "\n" + EXAMPLE_12 + "\n" + """
-
-                        INSTRUCTIONS DE FORMAT:
-                        - Retourne UNIQUEMENT la traduction, sans explication ni commentaire.
-                        - Ne mets pas de guillemets autour de la traduction.
-                        - Si tu n'es pas certain d'un mot, utilise l'emprunt plutôt qu'inventer.
-                        """;
+                + "\n" + EXAMPLE_11 + "\n" + EXAMPLE_12 + "\n";
     }
 
     /**
