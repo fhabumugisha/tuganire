@@ -13,7 +13,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
@@ -22,7 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>
  * Starts a Testcontainers PostgreSQL instance and wires its JDBC URL into the Spring context via
  * {@link DynamicPropertySource}. The {@code it} profile activates {@code application-it.yml}. All subclasses share the
- * same static container, which Testcontainers starts once per JVM.
+ * same static singleton container, started once per JVM.
  *
  * <p>
  * A no-op {@link TranslationCache} is registered as {@code @Primary} so that the Redis-backed implementation is not
@@ -35,10 +34,16 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Import(AbstractIntegrationTest.NoOpCacheConfig.class)
 public abstract class AbstractIntegrationTest {
 
-    @Container
+    // Singleton container: started once per JVM and never stopped by the JUnit extension (Ryuk cleans it up).
+    // A @Container field would be stopped after the first test class, while Spring's cached context keeps
+    // pointing at its old port — the next IT class then fails with "Connection refused".
     @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("tuganire_it").withUsername("tuganire").withPassword("tuganire");
+
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void overrideDataSourceProperties(DynamicPropertyRegistry registry) {
