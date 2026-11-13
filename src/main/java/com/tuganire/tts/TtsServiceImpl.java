@@ -1,5 +1,6 @@
 package com.tuganire.tts;
 
+import com.tuganire.shared.util.PipelineMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +40,10 @@ class TtsServiceImpl implements TtsService {
 
         log.debug("TTS synthesize: provider={}, lang={}, text length={}", provider.name(), langCode, text.length());
 
+        long start = System.nanoTime();
         byte[] audio = provider.synthesize(text, langCode);
+        PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_TTS, start, PipelineMetrics.TAG_PROVIDER,
+                provider.name(), PipelineMetrics.TAG_LANG, langCode);
 
         meterRegistry.counter(COUNTER_NAME, TAG_TYPE, TAG_TYPE_VALUE, TAG_NAME, provider.name()).increment();
 

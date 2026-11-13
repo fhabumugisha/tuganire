@@ -124,6 +124,9 @@ tuganire:
       temperature-locked-models:
         - gpt-5.5
         - gpt-5.4-mini
+      # reasoning_effort sent to the models above by the streaming conversation pipeline. Live speech translation
+      # needs no deliberation; the API default (medium) adds seconds before the first token. Blank = API default.
+      reasoning-effort: ${OPENAI_REASONING_EFFORT:none}
   # Per-model LLM pricing in USD per 1,000 tokens (used for admin usage-cost estimates).
   ai-models:
     models:
@@ -177,6 +180,10 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # Histogram buckets for the conversation pipeline timers so Prometheus/Grafana can compute p50/p95.
+      percentiles-histogram:
+        tuganire.pipeline.stage: true
   otlp:
     metrics:
       export:

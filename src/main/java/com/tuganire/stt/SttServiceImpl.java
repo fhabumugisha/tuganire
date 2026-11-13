@@ -1,5 +1,6 @@
 package com.tuganire.stt;
 
+import com.tuganire.shared.util.PipelineMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,10 @@ class SttServiceImpl implements SttService {
         log.debug("SttServiceImpl: transcribing {} bytes in '{}' via provider '{}'", audio.length, langCode,
                 provider.name());
 
+        long start = System.nanoTime();
         String transcript = provider.transcribe(audio, language);
+        PipelineMetrics.record(meterRegistry, PipelineMetrics.STAGE_STT, start, PipelineMetrics.TAG_PROVIDER,
+                provider.name(), PipelineMetrics.TAG_LANG, langCode);
 
         meterRegistry.counter(COUNTER_NAME, TAG_TYPE, TYPE_STT, TAG_NAME, provider.name()).increment();
 

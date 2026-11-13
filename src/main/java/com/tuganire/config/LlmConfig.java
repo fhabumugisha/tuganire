@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -55,7 +56,11 @@ public record LlmConfig(@NotBlank String defaultProvider, @NotBlank String fallb
      * @param temperatureLockedModels
      *            exact model ids that reject a custom {@code temperature} option (e.g. the GPT-5.x reasoning models).
      *            The provider omits {@code temperature} for these and lets the API use its server-side default.
+     * @param reasoningEffort
+     *            {@code reasoning_effort} sent to the reasoning models listed in {@code temperatureLockedModels} by the
+     *            streaming conversation pipeline ({@code none}, {@code low}, {@code medium}…). Blank = API default.
+     *            Real-time translation needs no deliberation, so a low effort cuts time-to-first-token.
      */
-    public record OpenAiConfig(@NotNull List<String> temperatureLockedModels) {
+    public record OpenAiConfig(@NotNull List<String> temperatureLockedModels, @Nullable String reasoningEffort) {
     }
 }
