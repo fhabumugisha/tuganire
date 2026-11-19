@@ -11,9 +11,6 @@ import java.util.List;
  *            names of registered STT providers
  * @param llmProviders
  *            names of registered LLM providers
- * @param activeTtsProvider
- *            name of the currently active TTS provider
  */
-public record ProvidersResponse(List<String> ttsProviders, List<String> sttProviders, List<String> llmProviders,
-        String activeTtsProvider) {
+public record ProvidersResponse(List<String> ttsProviders, List<String> sttProviders, List<String> llmProviders) {
 }

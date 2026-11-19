@@ -678,7 +678,6 @@ public class GoldenEntry {
 | `POST` | `/api/v1/feedback` | Soumet un feedback 👍/👎 + correction optionnelle |
 | `GET` | `/api/v1/languages` | Liste des langues supportées |
 | `GET` | `/api/v1/providers` | Liste les providers TTS/STT/LLM disponibles |
-| `PUT` | `/api/v1/providers/tts` | Change le provider TTS courant (admin) |
 | `GET` | `/actuator/health` | Health check |
 | `GET` | `/actuator/metrics` | Métriques Prometheus |
 

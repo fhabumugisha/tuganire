@@ -18,8 +18,8 @@ import org.springframework.stereotype.Component;
  * (e.g. {@code gpt-5.5} on OpenAI vs {@code claude-sonnet-4-6} on Anthropic). The selected model also determines which
  * provider the pipeline routes to (see {@link #getActiveProvider()}).
  * </ul>
- * Both are process-global (one value for everyone), matching the {@code activeTtsProvider} pattern — tuning knobs, not
- * per-user preferences. Providers read them on every call so a change takes effect on the next translation.
+ * Both are process-global (one value for everyone) — tuning knobs, not per-user preferences. Providers read them on
+ * every call so a change takes effect on the next translation.
  */
 @Component
 public class LlmSettings {
