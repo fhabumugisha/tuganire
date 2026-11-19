@@ -98,6 +98,11 @@ tuganire:
     gender: ${PROTO_TTS_GENDER:female}
   stt:
     default-provider: whisper
+    # Kinyarwanda STT: "mms" (self-hosted mms-1b-all, ~3 s, default: best accuracy on real voices) or
+    # "openai" (gpt-transcribe + Kinyarwanda prompt, ~0.6 s, less accurate; falls back to MMS on failure).
+    # Switchable per environment with KINY_STT_PROVIDER, no code change needed.
+    kiny-provider: ${KINY_STT_PROVIDER:mms}
+    openai-model: ${OPENAI_STT_MODEL:gpt-transcribe}
   llm:
     default-provider: openai
     fallback-provider: anthropic

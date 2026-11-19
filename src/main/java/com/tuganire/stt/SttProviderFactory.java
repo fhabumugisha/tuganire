@@ -1,5 +1,6 @@
 package com.tuganire.stt;
 
+import com.tuganire.config.SttConfig;
 import com.tuganire.shared.exception.BusinessException;
 import java.util.List;
 import java.util.Map;
@@ -22,11 +23,15 @@ import org.springframework.stereotype.Service;
 @Slf4j
 class SttProviderFactory {
 
+    private static final String LANG_KINY = "rw";
+
     private final Map<String, SttProvider> byName;
     private final List<SttProvider> providers;
+    private final SttConfig sttConfig;
 
-    SttProviderFactory(List<SttProvider> providers) {
+    SttProviderFactory(List<SttProvider> providers, SttConfig sttConfig) {
         this.providers = providers;
+        this.sttConfig = sttConfig;
         this.byName = providers.stream().collect(Collectors.toMap(SttProvider::name, Function.identity()));
         log.info("SttProviderFactory: registered providers = {}", byName.keySet());
     }
@@ -49,7 +54,12 @@ class SttProviderFactory {
     }
 
     /**
-     * Returns the first registered provider that supports the given language code.
+     * Returns the provider for the given language code.
+     *
+     * <p>
+     * Kinyarwanda ({@code "rw"}) is routed to the provider named by {@code tuganire.stt.kiny-provider} (several
+     * providers support it, so "first match" would be arbitrary). Other languages use the first registered provider
+     * whose {@link SttProvider#supportsLanguage} returns {@code true}.
      *
      * <p>
      * If no provider supports {@code langCode} — most notably {@code "rw"} / Kinyarwanda, which whisper-1 does not
@@ -63,6 +73,9 @@ class SttProviderFactory {
      *             {@code "stt.provider.unsupported-language"} if no registered provider supports the language
      */
     SttProvider forLanguage(String langCode) {
+        if (LANG_KINY.equals(langCode)) {
+            return get(sttConfig.kinyProvider());
+        }
         Optional<SttProvider> match = providers.stream().filter(p -> p.supportsLanguage(langCode)).findFirst();
 
         if (match.isEmpty()) {
