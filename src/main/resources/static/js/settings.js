@@ -3,10 +3,9 @@
  *
  * Responsibilities:
  *  settings():
- *    - Load TTS providers from GET /api/v1/providers.
  *    - Load translation models from GET /api/v1/settings/translation-model.
  *    - Load the GPT temperature from GET /api/v1/settings/temperature.
- *    - Auto-save every control (TTS provider, FR STT engine, temperature slider,
+ *    - Auto-save every control (FR STT engine, temperature slider,
  *      translation model) on change — there is no batched submit button.
  *    - Slider saves are debounced and tagged with a monotonic request id so an
  *      out-of-order response cannot overwrite a fresher slider value (C11).
@@ -34,10 +33,6 @@ function _t(key, fallback) {
 function settings() {
     return {
         // ── state ────────────────────────────────────────────────────────────
-        providers: [],
-        selectedProvider: '',
-        providerError: false,
-
         /**
          * French STT engine: 'webspeech' (on-device Web Speech API) or 'openai'
          * (server-side Whisper + LLM correction). Per-device, French-only; read
@@ -87,7 +82,6 @@ function settings() {
             if (savedStt === 'webspeech' || savedStt === 'openai') {
                 this.frenchStt = savedStt;
             }
-            this.loadProviders();
             this.loadTemperature();
             this.loadTranslationModel();
         },
@@ -295,87 +289,6 @@ function settings() {
                 this._error('model', 'settings.saveError.model',
                     'Failed to save the translation model.');
                 this.loadTranslationModel();
-            }
-        },
-
-        // ── provider loading + TTS save ───────────────────────────────────────
-
-        /**
-         * Fetches GET /api/v1/providers and populates the <select>.
-         *
-         * The endpoint (ProvidersController) returns an object:
-         *   { "ttsProviders": ["proto","mms"], ...,
-         *     "activeTtsProvider": "proto" }
-         * Only Proto (default) and MMS (fallback) are registered.
-         */
-        async loadProviders() {
-            // Friendly labels keyed by provider id; falls back to capitalising the id.
-            const LABELS = { proto: 'Proto', mms: 'MMS' };
-            // Preferred display order — Proto (default) first, then MMS.
-            const ORDER = ['proto', 'mms'];
-            try {
-                const resp = await fetch('/api/v1/providers', {
-                    headers: { Accept: 'application/json' },
-                });
-                if (!resp.ok) {
-                    this.providerError = true;
-                    return;
-                }
-                const data = await resp.json();
-                const names = Array.isArray(data.ttsProviders) ? data.ttsProviders : [];
-                if (names.length === 0) {
-                    this.providerError = true;
-                    return;
-                }
-                names.sort((a, b) => {
-                    const ia = ORDER.indexOf(a);
-                    const ib = ORDER.indexOf(b);
-                    return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib);
-                });
-                this.providers = names.map((id) => ({
-                    id,
-                    name: LABELS[id] || id.charAt(0).toUpperCase() + id.slice(1),
-                }));
-                this.selectedProvider = data.activeTtsProvider && names.includes(data.activeTtsProvider)
-                    ? data.activeTtsProvider
-                    : names[0];
-            } catch (_) {
-                this.providerError = true;
-            }
-        },
-
-        /**
-         * B6 — auto-save the TTS provider on @change (no batched submit button).
-         * PUT /api/v1/providers/tts with the selected provider ID and CSRF header.
-         */
-        async saveTtsProvider() {
-            if (!this.selectedProvider) return;
-            this._saving('tts');
-            try {
-                const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content || '';
-                const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-
-                const resp = await fetch('/api/v1/providers/tts', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [csrfHeader]: csrfToken,
-                    },
-                    // Endpoint (SessionController.TtsProviderSwitchRequest) expects { providerName }.
-                    body: JSON.stringify({ providerName: this.selectedProvider }),
-                });
-
-                if (resp.ok) {
-                    this._success('tts');
-                } else {
-                    this._error('tts', 'settings.saveError.tts',
-                        'Failed to save the text-to-speech provider.');
-                    this.loadProviders();
-                }
-            } catch (_) {
-                this._error('tts', 'settings.saveError.tts',
-                    'Failed to save the text-to-speech provider.');
-                this.loadProviders();
             }
         },
     };
